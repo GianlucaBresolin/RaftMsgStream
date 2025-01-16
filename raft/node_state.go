@@ -16,16 +16,16 @@ const (
 
 const MinElectionTimeout = 150
 const MaxElectionTimeout = 300
-const CandidateTimeout = 20
+const CandidateTimeout = 10
 
 type ServerID string
 type Port string
 
 type nodeState struct {
 	id              ServerID
-	state           int
-	term            int
-	numberNodes     int
+	state           uint
+	term            uint
+	numberNodes     uint
 	peers           map[ServerID]Port
 	peersConnection map[ServerID]*rpc.Client
 	electionTimer   *time.Timer
@@ -42,7 +42,7 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		term:            0,
 		state:           Follower,
 		id:              id,
-		numberNodes:     int(len(peers) + 1),
+		numberNodes:     uint(len(peers) + 1),
 		peers:           peers,
 		peersConnection: make(map[ServerID]*rpc.Client),
 		voteResponseCh:  make(chan RequestVoteResult, len(peers)),
@@ -88,24 +88,32 @@ func (ns *nodeState) handleMyElection() {
 			case requestVoteArguments := <-ns.voteRequestCh:
 				//we need to ask for votes
 				for _, peersConnection := range ns.peersConnection {
-					log.Println("Asking for votes")
+					// log.Println("Asking for votes", ns.id, "for term", ns.term)
 					go func() {
 						voteResponse := &RequestVoteResult{}
-						peersConnection.Call(
-							"Node.RequestVoteRPC",
-							requestVoteArguments,
-							voteResponse)
-						ns.voteResponseCh <- *voteResponse
+						voteFlag := false
+						for !voteFlag {
+							err := peersConnection.Call(
+								"Node.RequestVoteRPC",
+								requestVoteArguments,
+								voteResponse)
+
+							if err == nil {
+								ns.voteResponseCh <- *voteResponse
+								voteFlag = true
+							} else {
+								ns.mutex.Lock()
+								if ns.term > requestVoteArguments.Term || ns.currentLeader != "" {
+									//stale term or we becomes leader -> stop asking to that node for a vote
+									voteFlag = true
+								}
+								ns.mutex.Unlock()
+							}
+
+							time.Sleep(CandidateTimeout * time.Millisecond) //avoid flooding the nodes
+						}
 					}()
 				}
-
-				time.Sleep(CandidateTimeout * time.Millisecond)
-				ns.mutex.Lock()
-				if ns.state == Candidate {
-					//continue asking for votes
-					ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, 0, 0}
-				}
-				ns.mutex.Unlock()
 			}
 		}
 	}()
@@ -124,7 +132,7 @@ func (ns *nodeState) handleMyElection() {
 
 				if resp.Term == ns.term && resp.VoteGranted {
 					ns.electionVotes++
-					if ns.electionVotes > ns.numberNodes/2 && ns.currentLeader == "" {
+					if ns.electionVotes > int(ns.numberNodes)/2 && ns.currentLeader == "" {
 						ns.winElection()
 					}
 				}

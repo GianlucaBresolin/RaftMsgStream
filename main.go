@@ -6,6 +6,7 @@ import (
 
 func main() {
 
+	//node1 := raft.NewNode("node1", ":5001", map[raft.ServerID]raft.Port{})
 	node1 := raft.NewNode("node1", ":5001", map[raft.ServerID]raft.Port{
 		"node2": ":5002",
 		"node3": ":5003"})

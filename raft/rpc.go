@@ -1,14 +1,14 @@
 package raft
 
 type RequestVoteArguments struct {
-	Term         int
+	Term         uint
 	CandidateId  ServerID
-	LastLogIndex int
-	LastLogTerm  int
+	LastLogIndex uint
+	LastLogTerm  uint
 }
 
 type RequestVoteResult struct {
-	Term        int
+	Term        uint
 	VoteGranted bool
 }
 
@@ -19,8 +19,9 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	if req.Term > n.state.term {
 		n.state.term = req.Term
 		n.state.revertToFollower()
+		n.state.myVote = req.CandidateId
 		res.Term = n.state.term
-		res.VoteGranted = false
+		res.VoteGranted = true
 		return nil
 	}
 
