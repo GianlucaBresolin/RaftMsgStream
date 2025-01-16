@@ -14,8 +14,9 @@ const (
 	Leader    = 2
 )
 
-const MinElectionTimeout = 1500
-const MaxElectionTimeout = 3000
+const MinElectionTimeout = 150
+const MaxElectionTimeout = 300
+const CandidateTimeout = 20
 
 type ServerID string
 type Port string
@@ -51,13 +52,10 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 }
 
 func (ns *nodeState) revertToFollower() {
-	if ns.state != Follower {
-		ns.resetTimer()
-	}
 	ns.state = Follower
 	ns.currentLeader = ""
 	ns.myVote = ""
-	ns.voteRequestCh <- RequestVoteArguments{-1, "", 0, 0} //stop asking votes
+	ns.resetTimer()
 }
 
 func (ns *nodeState) startElection() {
@@ -67,14 +65,18 @@ func (ns *nodeState) startElection() {
 	ns.myVote = ns.id
 	ns.voteResponseCh <- RequestVoteResult{ns.term, true}
 	ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, 0, 0}
-	// log.Println("Starting election for term", ns.term +1)
+	log.Println("Starting election for term", ns.term)
 }
 
 func (ns *nodeState) winElection() {
 	ns.state = Leader
 	ns.currentLeader = ns.id
-	ns.electionTimer.Stop()
-	ns.voteRequestCh <- RequestVoteArguments{-1, "", 0, 0} //stop asking votes
+	if !ns.electionTimer.Stop() {
+		select {
+		case <-ns.electionTimer.C: //try to drain from the channel
+		default:
+		}
+	}
 	log.Println("Node", ns.id, "won the election for term", ns.term)
 }
 
@@ -84,13 +86,9 @@ func (ns *nodeState) handleMyElection() {
 		for {
 			select {
 			case requestVoteArguments := <-ns.voteRequestCh:
-				if requestVoteArguments.Term == -1 {
-					//stop asking votes
-					continue
-				}
-
 				//we need to ask for votes
 				for _, peersConnection := range ns.peersConnection {
+					log.Println("Asking for votes")
 					go func() {
 						voteResponse := &RequestVoteResult{}
 						peersConnection.Call(
@@ -101,10 +99,11 @@ func (ns *nodeState) handleMyElection() {
 					}()
 				}
 
+				time.Sleep(CandidateTimeout * time.Millisecond)
 				ns.mutex.Lock()
 				if ns.state == Candidate {
 					//continue asking for votes
-					ns.voteRequestCh <- requestVoteArguments
+					ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, 0, 0}
 				}
 				ns.mutex.Unlock()
 			}
@@ -123,7 +122,7 @@ func (ns *nodeState) handleMyElection() {
 					ns.revertToFollower()
 				}
 
-				if resp.Term == ns.term {
+				if resp.Term == ns.term && resp.VoteGranted {
 					ns.electionVotes++
 					if ns.electionVotes > ns.numberNodes/2 && ns.currentLeader == "" {
 						ns.winElection()
@@ -135,11 +134,19 @@ func (ns *nodeState) handleMyElection() {
 	}()
 }
 
-func (ns *nodeState) resetTimer() {
-	if ns.electionTimer != nil {
-		ns.electionTimer.Stop()
-	}
+func (ns *nodeState) startTimer() {
 	ns.electionTimer = time.NewTimer(time.Duration(MinElectionTimeout+rand.Intn(MaxElectionTimeout-MinElectionTimeout)) * time.Millisecond)
+}
+
+func (ns *nodeState) resetTimer() {
+	if ns.electionTimer != nil && !ns.electionTimer.Stop() {
+		select {
+		case <-ns.electionTimer.C: //try to drain from the channel
+		default:
+		}
+	}
+
+	ns.electionTimer.Reset(time.Duration(MinElectionTimeout+rand.Intn(MaxElectionTimeout-MinElectionTimeout)) * time.Millisecond)
 }
 
 func (ns *nodeState) handleTimer() {

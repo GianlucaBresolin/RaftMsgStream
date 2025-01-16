@@ -1,0 +1,2 @@
+- controllo handleMyElection se ha senso chiamarla con go
+- implemento lastLogIndex, lastLogTerm
