@@ -19,6 +19,7 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	if req.Term > n.state.term {
 		n.state.term = req.Term
 		n.state.revertToFollower()
+		//TODO: logic of safety check
 		n.state.myVote = req.CandidateId
 		res.Term = n.state.term
 		res.VoteGranted = true
@@ -33,6 +34,7 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 
 	// req.Term == n.state.term
 	if n.state.myVote == "" {
+		//TODO: logic of safety check
 		res.Term = n.state.term
 		res.VoteGranted = true
 		n.state.myVote = req.CandidateId
@@ -42,5 +44,4 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	res.Term = n.state.term
 	res.VoteGranted = false
 	return nil
-	//TODO: logic of safety check
 }
