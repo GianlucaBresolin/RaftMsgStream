@@ -56,10 +56,8 @@ func (n *Node) PrepareConnections() {
 }
 
 func (n *Node) Run() {
-	n.state.startTimer()
 
-	go n.state.handleTimer()
-	go n.state.handleMyElection()
+	n.state.handleNodeState()
 
 	for {
 		//do things

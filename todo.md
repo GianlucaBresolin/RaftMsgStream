@@ -1,7 +1,10 @@
 - [ ] controllo handleMyElection se ha senso chiamarla con go
 - [ ] implemento lastLogIndex, lastLogTerm
+- [ ] aggiungo *log.Fatal* in caso di mancata connessione riuscita all'avvio
 
-- [ ] implement *heartbeat* logic
+- [ ] riguardo logica candidate riprova votazione con time.after o ticker
+
+- [x] implement *heartbeat* logic
 - [ ] implement *log* struct
 
 # GOOD POINTS

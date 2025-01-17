@@ -1,5 +1,7 @@
 package raft
 
+import "log"
+
 type RequestVoteArguments struct {
 	Term         uint
 	CandidateId  ServerID
@@ -43,5 +45,54 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 
 	res.Term = n.state.term
 	res.VoteGranted = false
+	return nil
+}
+
+type AppendEntriesArguments struct {
+	Term             uint
+	LeaderId         ServerID
+	PreviousLogIndex uint
+	PreviousLogTerm  uint
+	Entries          []LogEntry
+	LeaderCommit     uint
+}
+
+type AppendEntriesResult struct {
+	Term    uint
+	Success bool
+}
+
+func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesResult) error {
+	n.state.mutex.Lock()
+	defer n.state.mutex.Unlock()
+
+	if arg.Term < n.state.term {
+		res.Term = n.state.term
+		res.Success = false
+		return nil
+	}
+
+	if arg.Term > n.state.term {
+		n.state.revertToFollower()
+		n.state.currentLeader = arg.LeaderId
+		// log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
+		n.state.term = arg.Term
+
+		res.Term = n.state.term
+		res.Success = true
+		return nil
+	}
+
+	// arg.Term == n.state.term
+	if n.state.state == Candidate {
+		n.state.revertToFollower()
+		n.state.currentLeader = arg.LeaderId
+		log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
+	}
+
+	// log.Println("Node", n.state.id, "received heartbeat from", arg.LeaderId)
+	n.state.resetTimer()
+	res.Term = n.state.term
+	res.Success = true
 	return nil
 }
