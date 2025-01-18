@@ -32,15 +32,18 @@ type nodeState struct {
 	//leader logic
 	leaderCh chan bool
 	//log logic
-	log   logStruct
+	log           logStruct
+	logEntriesCh  chan *LogEntry
+	pendingCommit map[uint]chan bool
+	//mutex
 	mutex sync.Mutex
 }
 
 func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 	return &nodeState{
+		id:              id,
 		term:            0,
 		state:           Follower,
-		id:              id,
 		numberNodes:     uint(len(peers) + 1),
 		peers:           peers,
 		peersConnection: make(map[ServerID]*rpc.Client),
@@ -48,6 +51,11 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		voteRequestCh:   make(chan RequestVoteArguments, 1),
 		currentLeader:   "",
 		leaderCh:        make(chan bool),
+		log: logStruct{
+			entries: []LogEntry{},
+		},
+		logEntriesCh:  make(chan *LogEntry),
+		pendingCommit: make(map[uint]chan bool),
 	}
 }
 

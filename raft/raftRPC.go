@@ -53,7 +53,7 @@ type AppendEntriesArguments struct {
 	LeaderId         ServerID
 	PreviousLogIndex uint
 	PreviousLogTerm  uint
-	Entries          []logEntry
+	Entries          []LogEntry
 	LeaderCommit     uint
 }
 
@@ -90,6 +90,12 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
 	} else if n.state.currentLeader == "" {
 		n.state.currentLeader = arg.LeaderId
+	}
+
+	//fast implementation for replication (no correct logic)
+	if arg.LeaderCommit == 1 {
+		n.state.log.entries = append(n.state.log.entries, arg.Entries...)
+		log.Println("Node", n.state.id, "received", len(arg.Entries), "entries from", arg.LeaderId, "and appended to log")
 	}
 
 	// log.Println("Node", n.state.id, "received heartbeat from", arg.LeaderId)
