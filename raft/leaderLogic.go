@@ -19,14 +19,22 @@ func (ns *nodeState) handleLeadership() {
 				return
 			}
 		case <-ticker.C:
+			var arg AppendEntriesArguments
+
 			ns.mutex.Lock()
-			arg := AppendEntriesArguments{
-				Term:             ns.term,
-				LeaderId:         ns.id,
-				PreviousLogIndex: 0,
-				PreviousLogTerm:  0,
-				Entries:          []LogEntry{},
-				LeaderCommit:     0,
+			if ns.state == Leader {
+				// TODO
+				arg = AppendEntriesArguments{
+					Term:             ns.term,
+					LeaderId:         ns.id,
+					PreviousLogIndex: 0,
+					PreviousLogTerm:  0,
+					Entries:          []logEntry{},
+					LeaderCommit:     0,
+				}
+			} else {
+				ns.mutex.Unlock()
+				continue // not a leader anymore
 			}
 			ns.mutex.Unlock()
 

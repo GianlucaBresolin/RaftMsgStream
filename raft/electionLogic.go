@@ -16,7 +16,7 @@ func (ns *nodeState) startElection() {
 	ns.term++
 	ns.myVote = ns.id
 	ns.voteResponseCh <- RequestVoteResult{ns.term, true}
-	ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, 0, 0} //TODO
+	ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, ns.log.lastIndex(), ns.log.lastTerm()}
 	log.Println("Starting election for term", ns.term)
 }
 
@@ -67,7 +67,7 @@ func (ns *nodeState) askForVotes() {
 						}
 
 						ns.mutex.Lock()
-						if ns.term > requestVoteArguments.Term || ns.currentLeader != "" {
+						if (ns.term > requestVoteArguments.Term || ns.currentLeader != "") && ns.state == Candidate {
 							//stale term or we becomes leader -> stop asking to that node for a vote
 							stopAskingVote = true
 						}

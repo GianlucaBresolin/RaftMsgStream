@@ -55,11 +55,14 @@ func (n *Node) PrepareConnections() {
 	}
 }
 
+func (n *Node) handleClientRequests() {
+
+}
+
 func (n *Node) Run() {
 
 	n.state.handleNodeState()
 
 	for {
-		//do things
 	}
 }

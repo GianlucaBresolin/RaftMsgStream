@@ -1,9 +1,19 @@
 package raft
 
-type LogEntry struct {
+type logEntry struct {
 	//TODO: implement
 }
 
-type Log struct {
+type logStruct struct {
 	//TODO: implement
+}
+
+func (l *logStruct) lastIndex() uint {
+	//TODO: implement
+	return 1
+}
+
+func (l *logStruct) lastTerm() uint {
+	//TODO: implement
+	return 1
 }

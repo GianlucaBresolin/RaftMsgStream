@@ -31,7 +31,9 @@ type nodeState struct {
 	currentLeader  ServerID
 	//leader logic
 	leaderCh chan bool
-	mutex    sync.Mutex
+	//log logic
+	log   logStruct
+	mutex sync.Mutex
 }
 
 func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
