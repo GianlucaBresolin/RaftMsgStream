@@ -1,11 +1,11 @@
-- [ ] controllo handleMyElection se ha senso chiamarla con go
 - [ ] implemento lastLogIndex, lastLogTerm
 - [ ] aggiungo *log.Fatal* in caso di mancata connessione riuscita all'avvio
-
 - [ ] riguardo logica candidate riprova votazione con time.after o ticker
+- [ ] riguardo logica lastLogTerm dove utilizzato
+- [ ] riguardare dove e quando vengono inviati più logEntries
 
 - [x] implement *heartbeat* logic
-- [ ] implement *log* struct
+- [x] implement *log* struct
 
 # GOOD POINTS
 - per ogni termine invieremo al massimo un voto per nodo registrato all'interno del channel *voteResponseCh*

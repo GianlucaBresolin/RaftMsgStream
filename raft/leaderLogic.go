@@ -29,15 +29,19 @@ func (ns *nodeState) handleLeadership() {
 		case logEntryToReplicate := <-ns.logEntriesCh:
 			// replicate log entry
 			ns.mutex.Lock()
-			previousLogIndex := logEntryToReplicate.Index - 1        //TODO
-			previousLogTerm := ns.log.entries[previousLogIndex].Term //TODO
+
+			// build info for consistency check
+			previousLogIndex := logEntryToReplicate.Index - 1
+			previousLogTerm := ns.log.entries[previousLogIndex].Term
+
+			// build arguments for AppendEntriesRPC
 			arg := AppendEntriesArguments{
 				Term:             ns.term,
 				LeaderId:         ns.id,
 				PreviousLogIndex: previousLogIndex,
 				PreviousLogTerm:  previousLogTerm,
 				Entries:          []LogEntry{*logEntryToReplicate},
-				LeaderCommit:     ns.log.lastCommit(),
+				LeaderCommit:     ns.log.lastCommitedIndex,
 			}
 
 			if ns.state == Leader {
@@ -78,10 +82,23 @@ func (ns *nodeState) handleLeadership() {
 								replicationState.mutex.Lock()
 								replicationState.replicationCounter++
 								if replicationState.replicationCounter > ns.numberNodes/2 && !replicationState.replicationSuccess {
+									// commit the log entry in the replicationState
 									replicationState.replicationSuccess = true
 									ns.pendingCommit[logEntryToReplicate.Index] <- true
+
+									// commit log entry in the nodestate
+									ns.mutex.Lock()
+									entry := ns.log.entries[logEntryToReplicate.Index]
+									entry.Committed = true
+									ns.log.entries[logEntryToReplicate.Index] = entry
+									if logEntryToReplicate.Index > ns.log.lastCommitedIndex {
+										ns.log.lastCommitedIndex = logEntryToReplicate.Index
+									}
+									ns.mutex.Unlock()
 								}
 								replicationState.mutex.Unlock()
+							} else {
+								//TODO: manage failure logic of replication: inconsistency between leader and follower logs
 							}
 						}
 					}()
@@ -103,7 +120,7 @@ func (ns *nodeState) handleLeadership() {
 					PreviousLogIndex: 0,
 					PreviousLogTerm:  0,
 					Entries:          []LogEntry{},
-					LeaderCommit:     0,
+					LeaderCommit:     ns.log.lastCommitedIndex,
 				}
 			} else {
 				ns.mutex.Unlock()

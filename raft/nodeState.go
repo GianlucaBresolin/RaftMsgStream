@@ -52,7 +52,8 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		currentLeader:   "",
 		leaderCh:        make(chan bool),
 		log: logStruct{
-			entries: []LogEntry{},
+			entries:           make(map[uint]LogEntry),
+			lastCommitedIndex: 0,
 		},
 		logEntriesCh:  make(chan *LogEntry),
 		pendingCommit: make(map[uint]chan bool),

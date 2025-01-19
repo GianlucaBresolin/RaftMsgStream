@@ -8,7 +8,8 @@ type LogEntry struct {
 }
 
 type logStruct struct {
-	entries []LogEntry
+	entries           map[uint]LogEntry
+	lastCommitedIndex uint
 }
 
 func (l *logStruct) lastIndex() uint {
@@ -17,10 +18,5 @@ func (l *logStruct) lastIndex() uint {
 
 func (l *logStruct) lastTerm() uint {
 	//TODO: implement
-	return 1
-}
-
-func (l *logStruct) lastCommit() uint {
-	//return the last
 	return 1
 }

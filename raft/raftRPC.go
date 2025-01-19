@@ -92,15 +92,17 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		n.state.currentLeader = arg.LeaderId
 	}
 
-	//fast implementation for replication (no correct logic)
-	if arg.LeaderCommit == 1 {
-		n.state.log.entries = append(n.state.log.entries, arg.Entries...)
-		log.Println("Node", n.state.id, "received", len(arg.Entries), "entries from", arg.LeaderId, "and appended to log")
+	//consistent check
+	if n.state.log.entries[arg.PreviousLogIndex].Term == arg.PreviousLogTerm {
+		for _, entry := range arg.Entries {
+			n.state.log.entries[entry.Index] = entry
+		}
+		res.Success = true
+	} else {
+		res.Success = false
 	}
 
-	// log.Println("Node", n.state.id, "received heartbeat from", arg.LeaderId)
-	n.state.resetTimer()
 	res.Term = n.state.term
-	res.Success = true
+	n.state.resetTimer()
 	return nil
 }

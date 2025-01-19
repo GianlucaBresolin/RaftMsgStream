@@ -22,7 +22,7 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 			Committed: false,
 		}
 
-		n.state.log.entries = append(n.state.log.entries, logEntry)
+		n.state.log.entries[logEntry.Index] = logEntry
 		n.state.logEntriesCh <- &logEntry
 
 		responseCh := make(chan bool)
