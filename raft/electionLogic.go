@@ -21,13 +21,17 @@ func (ns *nodeState) startElection() {
 }
 
 func (ns *nodeState) winElection() {
-	ns.state = Leader
-	ns.currentLeader = ns.id
 	if !ns.electionTimer.Stop() {
 		select {
 		case <-ns.electionTimer.C: //try to drain from the channel
 		default:
 		}
+	}
+	ns.state = Leader
+	ns.currentLeader = ns.id
+	ns.nextIndex = make(map[ServerID]uint)
+	for peer := range ns.peers {
+		ns.nextIndex[peer] = ns.log.lastIndex() + 1
 	}
 	go ns.handleLeadership()
 	log.Println("Node", ns.id, "won the election for term", ns.term)
@@ -36,6 +40,7 @@ func (ns *nodeState) winElection() {
 func (ns *nodeState) revertToFollower() {
 	if ns.state == Leader {
 		ns.leaderCh <- true //stop handling leadership
+		ns.nextIndex = nil
 	}
 	ns.state = Follower
 	ns.currentLeader = ""

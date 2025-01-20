@@ -92,13 +92,43 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		n.state.currentLeader = arg.LeaderId
 	}
 
-	//consistent check
-	if n.state.log.entries[arg.PreviousLogIndex].Term == arg.PreviousLogTerm {
-		for _, entry := range arg.Entries {
-			n.state.log.entries[entry.Index] = entry
-		}
-		res.Success = true
+	//consistency check
+	exist := true
+	var previousEntry LogEntry
+	if arg.PreviousLogIndex > n.state.log.lastIndex() {
+		//we don't have the log entry at previousLogIndex
+		exist = false
 	} else {
+		previousEntry = n.state.log.entries[arg.PreviousLogIndex]
+	}
+
+	if exist && previousEntry.Term == arg.PreviousLogTerm {
+		n.state.log.entries = append(n.state.log.entries, arg.Entries...)
+		res.Success = true
+		if len(arg.Entries) > 0 {
+			log.Println("node log", n.state.id, ":", n.state.log.entries)
+		}
+		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
+			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
+			//remove all pending commit that are less than or equal to leaderCommit
+			for index := range n.state.pendingCommit {
+				if index <= arg.LeaderCommit {
+					delete(n.state.pendingCommit, index)
+				}
+			}
+		}
+		for _, entry := range arg.Entries {
+			if entry.Index > n.state.log.lastCommitedIndex {
+				n.state.pendingCommit[entry.Index] = replicationState{
+					replicationCounter: 2, //leader already replicated, this follower is the second
+					replicationSuccess: false,
+				}
+			}
+		}
+	} else {
+		if arg.PreviousLogIndex <= n.state.log.lastIndex() {
+			n.state.log.entries = n.state.log.entries[:arg.PreviousLogIndex] // delete all inconsistent entries after previousLogIndex
+		}
 		res.Success = false
 	}
 

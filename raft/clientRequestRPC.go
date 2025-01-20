@@ -1,9 +1,8 @@
 package raft
 
-import "log"
-
 type ClientRequestArguments struct {
 	Command string
+	Port    string
 }
 
 type ClientRequestResult struct {
@@ -16,25 +15,21 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 
 	if n.state.state == Leader {
 		logEntry := LogEntry{
-			Index:     n.state.log.lastIndex() + 1,
-			Term:      n.state.term,
-			Command:   req.Command,
-			Committed: false,
+			Index:   n.state.log.lastIndex() + 1,
+			Term:    n.state.term,
+			Command: req.Command,
 		}
 
-		n.state.log.entries[logEntry.Index] = logEntry
-		n.state.logEntriesCh <- &logEntry
-
-		responseCh := make(chan bool)
-		n.state.pendingCommit[logEntry.Index] = responseCh
+		n.state.log.entries = append(n.state.log.entries, logEntry)
+		n.state.pendingCommit[logEntry.Index] = replicationState{
+			replicationCounter: 1, //leader already replicated
+			replicationSuccess: false,
+		}
+		n.state.logEntriesCh <- struct{}{} // trigger log replication
 		n.state.mutex.Unlock()
 
-		//wait for commit
-		committed := <-responseCh
-		delete(n.state.pendingCommit, logEntry.Index)
-		close(responseCh)
-		log.Println("Committed:", committed)
-		res.Success = committed
+		// TODO: find a way to send response to client only when committed
+		res.Success = true
 		res.Leader = n.state.id
 		return nil
 	}

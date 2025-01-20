@@ -15,6 +15,11 @@ const (
 type ServerID string
 type Port string
 
+type replicationState struct {
+	replicationCounter uint
+	replicationSuccess bool
+}
+
 type nodeState struct {
 	id              ServerID
 	state           uint
@@ -30,11 +35,12 @@ type nodeState struct {
 	myVote         ServerID
 	currentLeader  ServerID
 	//leader logic
-	leaderCh chan bool
+	leaderCh  chan bool
+	nextIndex map[ServerID]uint
 	//log logic
 	log           logStruct
-	logEntriesCh  chan *LogEntry
-	pendingCommit map[uint]chan bool
+	logEntriesCh  chan struct{}
+	pendingCommit map[uint]replicationState
 	//mutex
 	mutex sync.Mutex
 }
@@ -51,12 +57,20 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		voteRequestCh:   make(chan RequestVoteArguments, 1),
 		currentLeader:   "",
 		leaderCh:        make(chan bool),
+		nextIndex:       nil,
 		log: logStruct{
-			entries:           make(map[uint]LogEntry),
+			entries: []LogEntry{
+				//to start the log from index 1 we add a default entry
+				{
+					Index:   0,
+					Term:    0,
+					Command: "",
+				},
+			},
 			lastCommitedIndex: 0,
 		},
-		logEntriesCh:  make(chan *LogEntry),
-		pendingCommit: make(map[uint]chan bool),
+		logEntriesCh:  make(chan struct{}),
+		pendingCommit: make(map[uint]replicationState),
 	}
 }
 

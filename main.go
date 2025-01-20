@@ -3,6 +3,7 @@ package main
 import (
 	"RaftMsgStream/raft"
 	"log"
+	"net"
 	"net/rpc"
 	"time"
 )
@@ -15,6 +16,48 @@ func clientConnection(node raft.ServerID, port raft.Port) *rpc.Client {
 		log.Printf("Client has connected to %s", node)
 	}
 	return client
+}
+
+type ClientEndpoint struct {
+	Id   string
+	Port string
+}
+
+func (c *ClientEndpoint) RegisterClient() {
+	server := rpc.NewServer()
+	err := server.Register(c)
+	if err != nil {
+		log.Fatalf("Failed to register client %s: %v", c.Id, err)
+	}
+
+	listener, err := net.Listen("tcp", c.Port)
+	if err != nil {
+		log.Fatalf("Failed to listen on port %s: %v", c.Port, err)
+	}
+	log.Printf("Client %s is listening on %s\n", c.Id, c.Port)
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Printf("Error accepting connection: %v", err)
+				continue
+			}
+			go server.ServeConn(conn)
+		}
+	}()
+}
+
+type GetResponseArgs struct {
+	Success bool
+}
+
+type GetResponseResult struct {
+}
+
+func (c *ClientEndpoint) GetResponseRPC(res GetResponseArgs, reply *GetResponseResult) error {
+	log.Println("Client received response with args: ", res)
+	return nil
 }
 
 func main() {
@@ -48,12 +91,16 @@ func main() {
 	go node2.Run()
 	go node3.Run()
 
-	successRequests := false
+	successRequests := 0
 	client := clientConnection("node1", ":5001")
+	clientEndpoint := ClientEndpoint{"client1", ":5004"}
+	clientEndpoint.RegisterClient()
 
-	for !successRequests {
+	for successRequests != 2 {
+		time.Sleep(1 * time.Second)
 		args := raft.ClientRequestArguments{
 			Command: "Hello",
+			Port:    ":5004",
 		}
 		var reply raft.ClientRequestResult
 		err := client.Call("Node.ClientRequestRPC", args, &reply)
@@ -63,7 +110,7 @@ func main() {
 			time.Sleep(1 * time.Second)
 		} else {
 			if reply.Success {
-				successRequests = true
+				successRequests++
 				continue
 			}
 			time.Sleep(1 * time.Second)

@@ -7,6 +7,8 @@
 - [x] implement *heartbeat* logic
 - [x] implement *log* struct
 
+- [ ] sistemiamo commenti con uno spazio dopo //
+
 # GOOD POINTS
 - per ogni termine invieremo al massimo un voto per nodo registrato all'interno del channel *voteResponseCh*
 - le richieste di voto avvengono fino a quando non riceviamo una risposta valida (non per forza positiva) da un nodo, introducendo

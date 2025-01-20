@@ -1,22 +1,20 @@
 package raft
 
 type LogEntry struct {
-	Index     uint
-	Term      uint
-	Command   string
-	Committed bool
+	Index   uint
+	Term    uint
+	Command string
 }
 
 type logStruct struct {
-	entries           map[uint]LogEntry
+	entries           []LogEntry
 	lastCommitedIndex uint
 }
 
 func (l *logStruct) lastIndex() uint {
-	return uint(len(l.entries))
+	return uint(len(l.entries) - 1)
 }
 
 func (l *logStruct) lastTerm() uint {
-	//TODO: implement
-	return 1
+	return l.entries[l.lastIndex()].Term
 }
