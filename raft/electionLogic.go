@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-const MinElectionTimeout = 150
-const MaxElectionTimeout = 300
-
-const CandidateTimeout = 10
-
 func (ns *nodeState) startElection() {
 	ns.state = Candidate
 	ns.electionVotes = 0

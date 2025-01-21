@@ -12,6 +12,13 @@ const (
 	Leader    = 2
 )
 
+const MinElectionTimeout = 150
+const MaxElectionTimeout = 300
+
+const CandidateTimeout = 10
+
+const LeaderTimeout = 20
+
 type ServerID string
 type Port string
 

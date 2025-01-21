@@ -38,7 +38,7 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 
 	// for safety check, candidate is up to date if its lastLogIndex and
 	// lastLogTerm are at least as up-to-date as the node's
-	if n.state.log.lastIndex() <= req.LastLogIndex && n.state.myVote == "" {
+	if (n.state.log.lastIndex() <= req.LastLogIndex) && n.state.myVote == "" {
 		res.Term = n.state.term
 		res.VoteGranted = true
 		n.state.myVote = req.CandidateId

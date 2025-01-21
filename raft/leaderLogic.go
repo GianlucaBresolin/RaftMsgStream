@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-const LeaderTimeout = 20
-
 func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Client) {
 	// replicate log entry
 	ns.mutex.Lock()
