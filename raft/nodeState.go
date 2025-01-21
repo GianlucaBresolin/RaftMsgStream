@@ -15,11 +15,6 @@ const (
 type ServerID string
 type Port string
 
-type replicationState struct {
-	replicationCounter uint
-	replicationSuccess bool
-}
-
 type nodeState struct {
 	id              ServerID
 	state           uint

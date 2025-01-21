@@ -59,18 +59,27 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 
 			if res.Success {
 				for _, logEntryToReplicate := range logEntriesToReplicate {
-					updatedReplicationState := replicationState{
-						replicationCounter: ns.pendingCommit[logEntryToReplicate.Index].replicationCounter + 1,
-						replicationSuccess: ns.pendingCommit[logEntryToReplicate.Index].replicationSuccess,
-					}
-					if updatedReplicationState.replicationCounter > ns.numberNodes/2 && !updatedReplicationState.replicationSuccess {
-						updatedReplicationState.replicationSuccess = true
-						ns.log.lastCommitedIndex = logEntryToReplicate.Index
-						delete(ns.pendingCommit, logEntryToReplicate.Index)
-						log.Println("committed log entry in position", logEntryToReplicate.Index)
-					}
+					// the leader checks for commit just for log entries of the leader current term that are not committed
+					repState, ok := ns.pendingCommit[logEntryToReplicate.Index]
+					if logEntryToReplicate.Term == ns.term && ns.state == Leader && ok {
+						committed := false
+						if repState.replicationCounter+1 > ns.numberNodes/2 && !repState.committed {
+							committed = true
+							ns.log.lastCommitedIndex = logEntryToReplicate.Index
+							repState.clientCh <- true
+							log.Println("committed log entry in position", logEntryToReplicate.Index)
+						}
 
-					ns.pendingCommit[logEntryToReplicate.Index] = updatedReplicationState
+						if committed {
+							// remove pending commit
+							delete(ns.pendingCommit, logEntryToReplicate.Index)
+						} else {
+							ns.pendingCommit[logEntryToReplicate.Index] = replicationState{
+								replicationCounter: repState.replicationCounter + 1,
+								committed:          committed,
+							}
+						}
+					}
 					ns.nextIndex[node] = logEntryToReplicate.Index + 1
 				}
 			} else {

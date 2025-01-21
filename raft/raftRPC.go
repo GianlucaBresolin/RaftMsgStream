@@ -96,7 +96,7 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 	exist := true
 	var previousEntry LogEntry
 	if arg.PreviousLogIndex > n.state.log.lastIndex() {
-		//we don't have the log entry at previousLogIndex
+		//we don't have the log entry at previousLogIndex or the term doesn't match
 		exist = false
 	} else {
 		previousEntry = n.state.log.entries[arg.PreviousLogIndex]
@@ -110,18 +110,11 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		}
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
-			//remove all pending commit that are less than or equal to leaderCommit
-			for index := range n.state.pendingCommit {
+			//remove all our pending commit that are less than or equal to leaderCommit
+			for index, replicationState := range n.state.pendingCommit {
 				if index <= arg.LeaderCommit {
+					replicationState.clientCh <- true // TODO: check if the committed entry is the same as the one requested by the client
 					delete(n.state.pendingCommit, index)
-				}
-			}
-		}
-		for _, entry := range arg.Entries {
-			if entry.Index > n.state.log.lastCommitedIndex {
-				n.state.pendingCommit[entry.Index] = replicationState{
-					replicationCounter: 2, //leader already replicated, this follower is the second
-					replicationSuccess: false,
 				}
 			}
 		}

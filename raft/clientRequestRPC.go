@@ -10,6 +10,12 @@ type ClientRequestResult struct {
 	Leader  ServerID
 }
 
+type replicationState struct {
+	replicationCounter uint
+	committed          bool
+	clientCh           chan bool
+}
+
 func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
 	n.state.mutex.Lock()
 
@@ -23,13 +29,14 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 		n.state.log.entries = append(n.state.log.entries, logEntry)
 		n.state.pendingCommit[logEntry.Index] = replicationState{
 			replicationCounter: 1, //leader already replicated
-			replicationSuccess: false,
+			committed:          false,
+			clientCh:           make(chan bool),
 		}
 		n.state.logEntriesCh <- struct{}{} // trigger log replication
 		n.state.mutex.Unlock()
 
-		// TODO: find a way to send response to client only when committed
-		res.Success = true
+		committed := <-n.state.pendingCommit[logEntry.Index].clientCh
+		res.Success = committed
 		res.Leader = n.state.id
 		return nil
 	}
