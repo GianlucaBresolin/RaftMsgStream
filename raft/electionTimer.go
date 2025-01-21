@@ -13,7 +13,7 @@ func (ns *nodeState) startTimer() {
 func (ns *nodeState) resetTimer() {
 	if ns.electionTimer != nil && !ns.electionTimer.Stop() {
 		select {
-		case <-ns.electionTimer.C: //try to drain from the channel
+		case <-ns.electionTimer.C: // try to drain from the channel
 		default:
 		}
 	}
@@ -25,7 +25,7 @@ func (ns *nodeState) handleTimer() {
 	for {
 		select {
 		case <-ns.electionTimer.C:
-			//timer expired
+			// timer expired
 			ns.mutex.Lock()
 			log.Println("Election timeout expired, starting election...")
 			ns.startElection()

@@ -21,7 +21,7 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	if req.Term > n.state.term {
 		n.state.term = req.Term
 		n.state.revertToFollower()
-		//TODO: logic of safety check
+		// for safety check, later term wins
 		n.state.myVote = req.CandidateId
 		res.Term = n.state.term
 		res.VoteGranted = true
@@ -35,8 +35,10 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	}
 
 	// req.Term == n.state.term
-	if n.state.myVote == "" {
-		//TODO: logic of safety check
+
+	// for safety check, candidate is up to date if its lastLogIndex and
+	// lastLogTerm are at least as up-to-date as the node's
+	if n.state.log.lastIndex() <= req.LastLogIndex && n.state.myVote == "" {
 		res.Term = n.state.term
 		res.VoteGranted = true
 		n.state.myVote = req.CandidateId
@@ -92,11 +94,11 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		n.state.currentLeader = arg.LeaderId
 	}
 
-	//consistency check
+	// consistency check
 	exist := true
 	var previousEntry LogEntry
 	if arg.PreviousLogIndex > n.state.log.lastIndex() {
-		//we don't have the log entry at previousLogIndex or the term doesn't match
+		// we don't have the log entry at previousLogIndex or the term doesn't match
 		exist = false
 	} else {
 		previousEntry = n.state.log.entries[arg.PreviousLogIndex]
@@ -110,7 +112,7 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		}
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
-			//remove all our pending commit that are less than or equal to leaderCommit
+			// remove all our pending commit that are less than or equal to leaderCommit
 			for index, replicationState := range n.state.pendingCommit {
 				if index <= arg.LeaderCommit {
 					replicationState.clientCh <- true // TODO: check if the committed entry is the same as the one requested by the client

@@ -28,7 +28,7 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 
 		n.state.log.entries = append(n.state.log.entries, logEntry)
 		n.state.pendingCommit[logEntry.Index] = replicationState{
-			replicationCounter: 1, //leader already replicated
+			replicationCounter: 1, // leader already replicated
 			committed:          false,
 			clientCh:           make(chan bool),
 		}
@@ -41,7 +41,7 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 		return nil
 	}
 
-	//redirect to leader
+	// redirect to leader
 	res.Success = false
 	res.Leader = n.state.currentLeader
 	n.state.mutex.Unlock()

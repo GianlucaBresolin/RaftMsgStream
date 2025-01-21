@@ -23,7 +23,7 @@ func (ns *nodeState) startElection() {
 func (ns *nodeState) winElection() {
 	if !ns.electionTimer.Stop() {
 		select {
-		case <-ns.electionTimer.C: //try to drain from the channel
+		case <-ns.electionTimer.C: // try to drain from the channel
 		default:
 		}
 	}
@@ -39,7 +39,7 @@ func (ns *nodeState) winElection() {
 
 func (ns *nodeState) revertToFollower() {
 	if ns.state == Leader {
-		ns.leaderCh <- true //stop handling leadership
+		ns.leaderCh <- true // stop handling leadership
 		ns.nextIndex = nil
 	}
 	ns.state = Follower
@@ -52,9 +52,9 @@ func (ns *nodeState) askForVotes() {
 	for {
 		select {
 		case requestVoteArguments := <-ns.voteRequestCh:
-			//we need to ask for votes
+			// we need to ask for votes
 			for _, peerConnection := range ns.peersConnection {
-				// log.Println("Asking for votes", ns.id, "for term", ns.term)
+				//log.Println("Asking for votes", ns.id, "for term", ns.term)
 				go func() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false
@@ -73,13 +73,13 @@ func (ns *nodeState) askForVotes() {
 
 						ns.mutex.Lock()
 						if (ns.term > requestVoteArguments.Term || ns.currentLeader != "") && ns.state == Candidate {
-							//stale term or we becomes leader -> stop asking to that node for a vote
+							// stale term or we becomes leader -> stop asking to that node for a vote
 							stopAskingVote = true
 						}
 						ns.mutex.Unlock()
 
 						if !stopAskingVote {
-							time.Sleep(CandidateTimeout * time.Millisecond) //avoid flooding the nodes
+							time.Sleep(CandidateTimeout * time.Millisecond) // avoid flooding the nodes
 						}
 					}
 				}()
