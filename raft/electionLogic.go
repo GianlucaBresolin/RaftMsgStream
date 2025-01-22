@@ -29,6 +29,7 @@ func (ns *nodeState) winElection() {
 		ns.nextIndex[peer] = ns.log.lastIndex() + 1
 	}
 	go ns.handleLeadership()
+	ns.firstHeartbeatCh <- struct{}{}
 	log.Println("Node", ns.id, "won the election for term", ns.term)
 }
 

@@ -31,14 +31,16 @@ type nodeState struct {
 	peersConnection map[ServerID]*rpc.Client
 	// elction logic
 	electionTimer  *time.Timer
+	minimumTimer   *time.Timer
 	electionVotes  int
 	voteResponseCh chan RequestVoteResult
 	voteRequestCh  chan RequestVoteArguments
 	myVote         ServerID
 	currentLeader  ServerID
 	// leader logic
-	leaderCh  chan bool
-	nextIndex map[ServerID]uint
+	leaderCh         chan bool
+	firstHeartbeatCh chan struct{}
+	nextIndex        map[ServerID]uint
 	// log logic
 	log           logStruct
 	logEntriesCh  chan struct{}
@@ -49,17 +51,18 @@ type nodeState struct {
 
 func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 	return &nodeState{
-		id:              id,
-		term:            0,
-		state:           Follower,
-		numberNodes:     uint(len(peers) + 1),
-		peers:           peers,
-		peersConnection: make(map[ServerID]*rpc.Client),
-		voteResponseCh:  make(chan RequestVoteResult, len(peers)),
-		voteRequestCh:   make(chan RequestVoteArguments, 1),
-		currentLeader:   "",
-		leaderCh:        make(chan bool),
-		nextIndex:       nil,
+		id:               id,
+		term:             0,
+		state:            Follower,
+		numberNodes:      uint(len(peers) + 1),
+		peers:            peers,
+		peersConnection:  make(map[ServerID]*rpc.Client),
+		voteResponseCh:   make(chan RequestVoteResult, len(peers)),
+		voteRequestCh:    make(chan RequestVoteArguments, 1),
+		currentLeader:    "",
+		leaderCh:         make(chan bool),
+		firstHeartbeatCh: make(chan struct{}),
+		nextIndex:        nil,
 		log: logStruct{
 			entries: []LogEntry{
 				// to start the log from index 1 we add a default entry

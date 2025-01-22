@@ -106,6 +106,11 @@ func (ns *nodeState) handleLeadership() {
 			for node, peerConnection := range ns.peersConnection {
 				go ns.handleReplicationLog(node, peerConnection)
 			}
+		case <-ns.firstHeartbeatCh:
+			// the first heartbeat is sent immediately
+			for node, peerConnection := range ns.peersConnection {
+				go ns.handleReplicationLog(node, peerConnection)
+			}
 		case <-ticker.C:
 			// heartbeat
 			for node, peerConnection := range ns.peersConnection {

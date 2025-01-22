@@ -8,10 +8,11 @@ import (
 
 func TestRestetTimerWithDrain(t *testing.T) {
 	ns := nodeState{
-		electionTimer: time.NewTimer(time.Second),
+		electionTimer: time.NewTimer(time.Microsecond * 2),
+		minimumTimer:  time.NewTimer(time.Microsecond),
 	}
 
-	time.Sleep(time.Second) // wait for timer to expire
+	time.Sleep(time.Microsecond * 2) // wait for timer to expire
 	ns.resetTimer()
 
 	if ns.electionTimer == nil {
@@ -21,7 +22,8 @@ func TestRestetTimerWithDrain(t *testing.T) {
 
 func TestRestetTimerWithoutDrain(t *testing.T) {
 	ns := nodeState{
-		electionTimer: time.NewTimer(time.Second),
+		electionTimer: time.NewTimer(time.Microsecond * 2),
+		minimumTimer:  time.NewTimer(time.Microsecond),
 	}
 
 	ns.resetTimer()
@@ -33,7 +35,8 @@ func TestRestetTimerWithoutDrain(t *testing.T) {
 
 func TestHandleTimer(t *testing.T) {
 	ns := nodeState{
-		electionTimer: time.NewTimer(time.Second),
+		electionTimer: time.NewTimer(time.Microsecond * 2),
+		minimumTimer:  time.NewTimer(time.Microsecond),
 		mutex:         sync.Mutex{},
 	}
 

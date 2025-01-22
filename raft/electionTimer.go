@@ -7,17 +7,26 @@ import (
 )
 
 func (ns *nodeState) startTimer() {
+	ns.minimumTimer = time.NewTimer(time.Duration(MinElectionTimeout) * time.Millisecond)
 	ns.electionTimer = time.NewTimer(time.Duration(MinElectionTimeout+rand.Intn(MaxElectionTimeout-MinElectionTimeout)) * time.Millisecond)
 }
 
 func (ns *nodeState) resetTimer() {
-	if ns.electionTimer != nil && !ns.electionTimer.Stop() {
+	if !ns.minimumTimer.Stop() {
+		select {
+		case <-ns.minimumTimer.C: // try to drain from the channel
+		default:
+		}
+	}
+
+	if !ns.electionTimer.Stop() {
 		select {
 		case <-ns.electionTimer.C: // try to drain from the channel
 		default:
 		}
 	}
 
+	ns.minimumTimer.Reset(time.Duration(MinElectionTimeout) * time.Millisecond)
 	ns.electionTimer.Reset(time.Duration(MinElectionTimeout+rand.Intn(MaxElectionTimeout-MinElectionTimeout)) * time.Millisecond)
 }
 

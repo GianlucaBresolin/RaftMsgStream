@@ -33,6 +33,7 @@ func TestWinElection(t *testing.T) {
 		{Index: 3, Term: 1},
 	}
 	nodeState.electionTimer = time.NewTimer(time.Second)
+	nodeState.minimumTimer = time.NewTimer(time.Second)
 
 	nodeState.winElection()
 
@@ -63,6 +64,7 @@ func TestRevertToFollower(t *testing.T) {
 	nodeState.myVote = "id"
 	nodeState.nextIndex = map[ServerID]uint{"2": 4, "3": 5}
 	nodeState.electionTimer = time.NewTimer(time.Second)
+	nodeState.minimumTimer = time.NewTimer(time.Second)
 	nodeState.leaderCh = make(chan bool, 1)
 
 	nodeState.revertToFollower()
@@ -281,6 +283,7 @@ func TestHandleVotesFailure(t *testing.T) {
 		electionVotes:  0,
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
+		minimumTimer:   time.NewTimer(time.Second),
 		peers:          map[ServerID]Port{"2": "1234", "3": "1235"},
 		numberNodes:    3,
 	}
@@ -310,6 +313,7 @@ func TestHandleVotesWithNewTerm(t *testing.T) {
 		electionVotes:  0,
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
+		minimumTimer:   time.NewTimer(time.Second),
 		peers:          map[ServerID]Port{"2": "1234", "3": "1235"},
 		numberNodes:    3,
 	}

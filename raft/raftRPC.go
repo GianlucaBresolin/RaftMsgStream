@@ -18,6 +18,16 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	n.state.mutex.Lock()
 	defer n.state.mutex.Unlock()
 
+	// discard vote request to avoid disruption from removed servers
+	select {
+	case <-n.state.minimumTimer.C:
+	default:
+		// minimumTimer is not expired
+		res.Term = n.state.term
+		res.VoteGranted = false
+		return nil
+	}
+
 	if req.Term > n.state.term {
 		n.state.term = req.Term
 		n.state.revertToFollower()
