@@ -28,35 +28,30 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 		return nil
 	}
 
-	if req.Term > n.state.term {
-		n.state.term = req.Term
-		n.state.revertToFollower()
-		// for safety check, later term wins
-		n.state.myVote = req.CandidateId
-		res.Term = n.state.term
-		res.VoteGranted = true
-		return nil
-	}
-
 	if req.Term < n.state.term {
+		// stale term -> reject vote
 		res.Term = n.state.term
 		res.VoteGranted = false
 		return nil
+	}
+
+	if req.Term > n.state.term {
+		n.state.term = req.Term
+		n.state.revertToFollower()
 	}
 
 	// req.Term == n.state.term
 
 	// for safety check, candidate is up to date if its lastLogIndex and
 	// lastLogTerm are at least as up-to-date as the node's
-	if (n.state.log.lastIndex() <= req.LastLogIndex) && n.state.myVote == "" {
-		res.Term = n.state.term
-		res.VoteGranted = true
+	if (n.state.log.lastTerm() <= req.LastLogTerm) && (n.state.log.lastIndex() <= req.LastLogIndex) && n.state.myVote == "" {
 		n.state.myVote = req.CandidateId
-		return nil
+		res.VoteGranted = true
+	} else {
+		res.VoteGranted = false
 	}
 
 	res.Term = n.state.term
-	res.VoteGranted = false
 	return nil
 }
 
@@ -121,6 +116,15 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 			log.Println("node log", n.state.id, ":", n.state.log.entries)
 		}
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
+			// update the lastUSNof for all the committed requests
+			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex:] {
+				if entry.Client != "" {
+					//avoid NO-OP entry
+					n.state.lastUSNof[entry.Client] = entry.USN
+				}
+			}
+			log.Println("lastUSN:", n.state.lastUSNof)
+
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
 			// remove all our pending commit that are less than or equal to leaderCommit
 			for index, replicationState := range n.state.pendingCommit {

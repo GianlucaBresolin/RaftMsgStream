@@ -2,7 +2,8 @@ package raft
 
 type ClientRequestArguments struct {
 	Command string
-	Port    string
+	Id      string
+	USN     uint // Unique Sequence Number
 }
 
 type ClientRequestResult struct {
@@ -20,28 +21,38 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 	n.state.mutex.Lock()
 
 	if n.state.state == Leader {
-		logEntry := LogEntry{
-			Index:   n.state.log.lastIndex() + 1,
-			Term:    n.state.term,
-			Command: req.Command,
+		// check if the request is stale
+		lastUSN, ok := n.state.lastUSNof[req.Id]
+		if !ok {
+			n.state.lastUSNof[req.Id] = req.USN
 		}
 
-		n.state.log.entries = append(n.state.log.entries, logEntry)
-		n.state.pendingCommit[logEntry.Index] = replicationState{
-			replicationCounter: 1, // leader already replicated
-			committed:          false,
-			clientCh:           make(chan bool),
-		}
-		n.state.logEntriesCh <- struct{}{} // trigger log replication
-		n.state.mutex.Unlock()
+		if !ok || lastUSN < req.USN {
+			logEntry := LogEntry{
+				Index:   n.state.log.lastIndex() + 1,
+				Term:    n.state.term,
+				Command: req.Command,
+				Client:  req.Id,
+				USN:     req.USN,
+			}
 
-		committed := <-n.state.pendingCommit[logEntry.Index].clientCh
-		res.Success = committed
-		res.Leader = n.state.id
-		return nil
+			n.state.log.entries = append(n.state.log.entries, logEntry)
+			n.state.pendingCommit[logEntry.Index] = replicationState{
+				replicationCounter: 1, // leader already replicated
+				committed:          false,
+				clientCh:           make(chan bool),
+			}
+			n.state.logEntriesCh <- struct{}{} // trigger log replication
+			n.state.mutex.Unlock()
+
+			committed := <-n.state.pendingCommit[logEntry.Index].clientCh
+			res.Success = committed
+			res.Leader = n.state.id
+			return nil
+		}
 	}
 
-	// redirect to leader
+	// redirect to leader if not leader or stale request
 	res.Success = false
 	res.Leader = n.state.currentLeader
 	n.state.mutex.Unlock()

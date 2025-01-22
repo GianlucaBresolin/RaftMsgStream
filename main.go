@@ -100,7 +100,8 @@ func main() {
 		time.Sleep(1 * time.Second)
 		args := raft.ClientRequestArguments{
 			Command: "Hello",
-			Port:    ":5004",
+			Id:      "client1",
+			USN:     uint(successRequests),
 		}
 		var reply raft.ClientRequestResult
 		err := client.Call("Node.ClientRequestRPC", args, &reply)

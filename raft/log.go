@@ -4,6 +4,9 @@ type LogEntry struct {
 	Index   uint
 	Term    uint
 	Command string
+	// idempotent logic
+	Client string
+	USN    uint
 }
 
 type logStruct struct {

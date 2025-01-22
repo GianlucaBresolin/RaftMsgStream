@@ -56,6 +56,8 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 			}
 
 			if res.Success {
+				previousLastCommitedIndex := ns.log.lastCommitedIndex
+
 				for _, logEntryToReplicate := range logEntriesToReplicate {
 					// the leader checks for commit just for log entries of the leader current term that are not committed
 					repState, ok := ns.pendingCommit[logEntryToReplicate.Index]
@@ -80,6 +82,12 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 					}
 					ns.nextIndex[node] = logEntryToReplicate.Index + 1
 				}
+
+				// if we update the lastCommitedIndex, we have also to update ns.lastUSNof
+				for _, entry := range ns.log.entries[previousLastCommitedIndex:ns.log.lastCommitedIndex] {
+					ns.lastUSNof[entry.Client] = entry.USN
+				}
+
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
