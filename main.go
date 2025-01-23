@@ -101,7 +101,7 @@ func main() {
 		args := raft.ClientRequestArguments{
 			Command: "Hello",
 			Id:      "client1",
-			USN:     uint(successRequests),
+			USN:     successRequests,
 		}
 		var reply raft.ClientRequestResult
 		err := client.Call("Node.ClientRequestRPC", args, &reply)

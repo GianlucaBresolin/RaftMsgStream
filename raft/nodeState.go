@@ -42,10 +42,11 @@ type nodeState struct {
 	firstHeartbeatCh chan struct{}
 	nextIndex        map[ServerID]uint
 	// log logic
-	log           logStruct
-	logEntriesCh  chan struct{}
-	pendingCommit map[uint]replicationState
-	lastUSNof     map[string]uint
+	log                     logStruct
+	logEntriesCh            chan struct{}
+	pendingCommit           map[uint]replicationState
+	lastUSNof               map[string]int
+	lastUncommitedRequestof map[string]int
 	// mutex
 	mutex sync.Mutex
 }
@@ -75,9 +76,10 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 			},
 			lastCommitedIndex: 0,
 		},
-		logEntriesCh:  make(chan struct{}),
-		pendingCommit: make(map[uint]replicationState),
-		lastUSNof:     make(map[string]uint),
+		logEntriesCh:            make(chan struct{}),
+		pendingCommit:           make(map[uint]replicationState),
+		lastUSNof:               make(map[string]int),
+		lastUncommitedRequestof: make(map[string]int),
 	}
 }
 

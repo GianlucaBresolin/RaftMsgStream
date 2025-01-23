@@ -123,14 +123,21 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 					n.state.lastUSNof[entry.Client] = entry.USN
 				}
 			}
-			log.Println("lastUSN:", n.state.lastUSNof)
 
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
-			// remove all our pending commit that are less than or equal to leaderCommit
+			// remove all our pending commit that are less than or equal to lastCommitedIndex
 			for index, replicationState := range n.state.pendingCommit {
-				if index <= arg.LeaderCommit {
-					replicationState.clientCh <- true // TODO: check if the committed entry is the same as the one requested by the client
+				if index <= n.state.log.lastCommitedIndex {
+					replicationState.clientCh <- true // TODO: check if the committed entry is the same as the one requested by the client, how to manage the removed pending commmit
 					delete(n.state.pendingCommit, index)
+				}
+			}
+			// update lastUncommitedRequestof
+			n.state.lastUncommitedRequestof = make(map[string]int) // reset the map
+			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex:] {
+				if entry.Client != "" {
+					//avoid NO-OP entry
+					n.state.lastUncommitedRequestof[entry.Client] = entry.USN
 				}
 			}
 		}

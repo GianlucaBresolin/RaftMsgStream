@@ -6,7 +6,7 @@ type LogEntry struct {
 	Command string
 	// idempotent logic
 	Client string
-	USN    uint
+	USN    int
 }
 
 type logStruct struct {

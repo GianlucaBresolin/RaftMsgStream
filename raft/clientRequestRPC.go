@@ -3,7 +3,7 @@ package raft
 type ClientRequestArguments struct {
 	Command string
 	Id      string
-	USN     uint // Unique Sequence Number
+	USN     int // Unique Sequence Number
 }
 
 type ClientRequestResult struct {
@@ -22,12 +22,18 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 
 	if n.state.state == Leader {
 		// check if the request is stale
-		lastUSN, ok := n.state.lastUSNof[req.Id]
-		if !ok {
-			n.state.lastUSNof[req.Id] = req.USN
+		// check if we already committed the request
+		_, okC := n.state.lastUSNof[req.Id]
+		if !okC {
+			n.state.lastUSNof[req.Id] = -1
+		}
+		// check if we already have the request in the last requests
+		_, okP := n.state.lastUncommitedRequestof[req.Id]
+		if !okP {
+			n.state.lastUncommitedRequestof[req.Id] = -1
 		}
 
-		if !ok || lastUSN < req.USN {
+		if n.state.lastUSNof[req.Id] < req.USN && n.state.lastUncommitedRequestof[req.Id] < req.USN {
 			logEntry := LogEntry{
 				Index:   n.state.log.lastIndex() + 1,
 				Term:    n.state.term,
@@ -42,6 +48,8 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 				committed:          false,
 				clientCh:           make(chan bool),
 			}
+			n.state.lastUncommitedRequestof[req.Id] = req.USN
+
 			n.state.logEntriesCh <- struct{}{} // trigger log replication
 			n.state.mutex.Unlock()
 
