@@ -22,12 +22,17 @@ const LeaderTimeout = 20
 type ServerID string
 type Port string
 
+type Configuration struct {
+	OldConfig map[ServerID]Port
+	NewConfig map[ServerID]Port
+}
+
 type nodeState struct {
 	id              ServerID
 	state           uint
 	term            uint
 	numberNodes     uint
-	peers           map[ServerID]Port
+	peers           Configuration
 	peersConnection map[ServerID]*rpc.Client
 	// elction logic
 	electionTimer  *time.Timer
@@ -41,6 +46,7 @@ type nodeState struct {
 	leaderCh         chan bool
 	firstHeartbeatCh chan struct{}
 	nextIndex        map[ServerID]uint
+	USN              int
 	// log logic
 	log                     logStruct
 	logEntriesCh            chan struct{}
@@ -57,7 +63,7 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		term:             0,
 		state:            Follower,
 		numberNodes:      uint(len(peers) + 1),
-		peers:            peers,
+		peers:            Configuration{OldConfig: nil, NewConfig: peers},
 		peersConnection:  make(map[ServerID]*rpc.Client),
 		voteResponseCh:   make(chan RequestVoteResult, len(peers)),
 		voteRequestCh:    make(chan RequestVoteArguments, 1),
@@ -71,7 +77,9 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 				{
 					Index:   0,
 					Term:    0,
-					Command: "",
+					Command: nil,
+					Client:  "",
+					USN:     -1,
 				},
 			},
 			lastCommitedIndex: 0,

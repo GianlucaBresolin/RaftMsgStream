@@ -25,9 +25,15 @@ func (ns *nodeState) winElection() {
 	ns.state = Leader
 	ns.currentLeader = ns.id
 	ns.nextIndex = make(map[ServerID]uint)
-	for peer := range ns.peers {
+
+	// initialize nextIndex for all peers
+	for peer := range ns.peers.OldConfig {
 		ns.nextIndex[peer] = ns.log.lastIndex() + 1
 	}
+	for peer := range ns.peers.NewConfig {
+		ns.nextIndex[peer] = ns.log.lastIndex() + 1
+	}
+
 	go ns.handleLeadership()
 	ns.firstHeartbeatCh <- struct{}{}
 	log.Println("Node", ns.id, "won the election for term", ns.term)

@@ -1,9 +1,16 @@
 package raft
 
+const (
+	ActionEntry        = 0
+	ConfigurationEntry = 1
+	NOOPEntry          = 2
+)
+
 type LogEntry struct {
 	Index   uint
 	Term    uint
-	Command string
+	Command []byte
+	Type    uint
 	// idempotent logic
 	Client string
 	USN    int

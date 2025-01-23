@@ -254,7 +254,7 @@ func TestHandleVotesSuccess(t *testing.T) {
 		electionVotes:  0,
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
-		peers:          map[ServerID]Port{"2": "1234", "3": "1235"},
+		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
 		numberNodes:    3,
 	}
 
@@ -284,7 +284,7 @@ func TestHandleVotesFailure(t *testing.T) {
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
 		minimumTimer:   time.NewTimer(time.Second),
-		peers:          map[ServerID]Port{"2": "1234", "3": "1235"},
+		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
 		numberNodes:    3,
 	}
 
@@ -314,7 +314,7 @@ func TestHandleVotesWithNewTerm(t *testing.T) {
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
 		minimumTimer:   time.NewTimer(time.Second),
-		peers:          map[ServerID]Port{"2": "1234", "3": "1235"},
+		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
 		numberNodes:    3,
 	}
 

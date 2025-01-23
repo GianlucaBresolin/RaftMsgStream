@@ -2,6 +2,7 @@ package main
 
 import (
 	"RaftMsgStream/raft"
+	"encoding/json"
 	"log"
 	"net"
 	"net/rpc"
@@ -98,10 +99,49 @@ func main() {
 
 	for successRequests != 2 {
 		time.Sleep(1 * time.Second)
+		command := map[string]string{"message": "hello"}
+		data, _ := json.Marshal(command)
 		args := raft.ClientRequestArguments{
-			Command: "Hello",
+			Command: data,
+			Type:    raft.ActionEntry,
 			Id:      "client1",
 			USN:     successRequests,
+		}
+		var reply raft.ClientRequestResult
+		err := client.Call("Node.ClientRequestRPC", args, &reply)
+
+		if err != nil {
+			log.Printf("Failed to call ClientRequestRPC: %v", err)
+			time.Sleep(1 * time.Second)
+		} else {
+			if reply.Success {
+				successRequests++
+				continue
+			}
+			time.Sleep(1 * time.Second)
+			if reply.Leader == "" {
+				continue
+			}
+			client.Close()
+			client = clientConnection(reply.Leader, nodeMap[reply.Leader])
+		}
+	}
+
+	successRequests = 0
+	for successRequests != 1 {
+		time.Sleep(1 * time.Second)
+		command := map[string]map[string]string{
+			"newConfig": {
+				"node1": ":5001",
+				"node2": ":5002",
+				"node3": ":5003",
+			}}
+		data, _ := json.Marshal(command)
+		args := raft.ClientRequestArguments{
+			Command: data,
+			Type:    raft.ConfigurationEntry,
+			Id:      "client1",
+			USN:     3,
 		}
 		var reply raft.ClientRequestResult
 		err := client.Call("Node.ClientRequestRPC", args, &reply)

@@ -1,7 +1,8 @@
 package raft
 
 type ClientRequestArguments struct {
-	Command string
+	Command []byte
+	Type    uint
 	Id      string
 	USN     int // Unique Sequence Number
 }
@@ -34,26 +35,42 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 		}
 
 		if n.state.lastUSNof[req.Id] < req.USN && n.state.lastUncommitedRequestof[req.Id] < req.USN {
+			var command []byte
+			if req.Type == 1 {
+				// prepare Cold,new
+				command = n.state.prepareCold_new(req.Command)
+			} else {
+				command = req.Command
+			}
+
 			logEntry := LogEntry{
 				Index:   n.state.log.lastIndex() + 1,
 				Term:    n.state.term,
-				Command: req.Command,
+				Command: command,
+				Type:    req.Type,
 				Client:  req.Id,
 				USN:     req.USN,
 			}
 
 			n.state.log.entries = append(n.state.log.entries, logEntry)
+			clientCh := make(chan bool)
 			n.state.pendingCommit[logEntry.Index] = replicationState{
 				replicationCounter: 1, // leader already replicated
 				committed:          false,
-				clientCh:           make(chan bool),
+				clientCh:           clientCh,
 			}
 			n.state.lastUncommitedRequestof[req.Id] = req.USN
 
 			n.state.logEntriesCh <- struct{}{} // trigger log replication
 			n.state.mutex.Unlock()
 
-			committed := <-n.state.pendingCommit[logEntry.Index].clientCh
+			committed := <-clientCh
+
+			// if was a change configuration request, trigger the Cnew entry
+			if req.Type == 1 && committed {
+				go n.state.prepareCnew()
+			}
+
 			res.Success = committed
 			res.Leader = n.state.id
 			return nil

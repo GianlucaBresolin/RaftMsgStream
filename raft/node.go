@@ -44,7 +44,12 @@ func (n *Node) RegisterNode() {
 }
 
 func (n *Node) PrepareConnections() {
-	for peer, port := range n.state.peers {
+	for peer, port := range n.state.peers.NewConfig {
+		if n.state.peers.OldConfig[peer] == port {
+			// skip if the peer is already connected
+			continue
+		}
+
 		client, err := rpc.Dial("tcp", "localhost"+string(port))
 		if err != nil {
 			log.Printf("Failed to dial %s: %v", peer, err)

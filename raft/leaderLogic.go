@@ -86,15 +86,12 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 				// if we update the lastCommitedIndex, we have also to update ns.lastUSNof and ns.pendingRequestof
 				for _, entry := range ns.log.entries[previousLastCommitedIndex : ns.log.lastCommitedIndex+1] {
 					if entry.Client != "" && entry.USN > ns.lastUSNof[entry.Client] {
-						//avoid NO-OP entry
 						ns.lastUSNof[entry.Client] = entry.USN
 
 						if ns.lastUncommitedRequestof[entry.Client] == entry.USN {
 							// remove last request only if it is the same USN
 							delete(ns.lastUncommitedRequestof, entry.Client)
 						}
-						log.Println("lastUSN:", ns.lastUSNof)
-						log.Println("lastRequestof:", ns.lastUncommitedRequestof)
 					}
 				}
 

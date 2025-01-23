@@ -1,6 +1,8 @@
 package raft
 
-import "log"
+import (
+	"log"
+)
 
 type RequestVoteArguments struct {
 	Term         uint
@@ -112,9 +114,14 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
 		n.state.log.entries = append(n.state.log.entries, arg.Entries...)
 		res.Success = true
-		if len(arg.Entries) > 0 {
-			log.Println("node log", n.state.id, ":", n.state.log.entries)
+
+		// checks for confgiuration changes
+		for _, entry := range arg.Entries {
+			if entry.Type == 1 {
+				n.state.applyConfiguration(entry.Command)
+			}
 		}
+
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
 			// update the lastUSNof for all the committed requests
 			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex:] {
