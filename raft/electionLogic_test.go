@@ -255,7 +255,6 @@ func TestHandleVotesSuccess(t *testing.T) {
 		voteResponseCh: make(chan RequestVoteResult, 3),
 		electionTimer:  time.NewTimer(time.Second),
 		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
-		numberNodes:    3,
 	}
 
 	nodeState.voteResponseCh <- RequestVoteResult{1, true}
@@ -285,7 +284,6 @@ func TestHandleVotesFailure(t *testing.T) {
 		electionTimer:  time.NewTimer(time.Second),
 		minimumTimer:   time.NewTimer(time.Second),
 		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
-		numberNodes:    3,
 	}
 
 	nodeState.voteResponseCh <- RequestVoteResult{1, true}
@@ -315,7 +313,6 @@ func TestHandleVotesWithNewTerm(t *testing.T) {
 		electionTimer:  time.NewTimer(time.Second),
 		minimumTimer:   time.NewTimer(time.Second),
 		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
-		numberNodes:    3,
 	}
 
 	nodeState.voteResponseCh <- RequestVoteResult{1, true}

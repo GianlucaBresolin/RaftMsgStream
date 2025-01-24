@@ -28,10 +28,14 @@ func (ns *nodeState) winElection() {
 
 	// initialize nextIndex for all peers
 	for peer := range ns.peers.OldConfig {
-		ns.nextIndex[peer] = ns.log.lastIndex() + 1
+		if peer != ns.id {
+			ns.nextIndex[peer] = ns.log.lastIndex() + 1
+		}
 	}
 	for peer := range ns.peers.NewConfig {
-		ns.nextIndex[peer] = ns.log.lastIndex() + 1
+		if peer != ns.id {
+			ns.nextIndex[peer] = ns.log.lastIndex() + 1
+		}
 	}
 
 	go ns.handleLeadership()
@@ -86,6 +90,8 @@ func (ns *nodeState) askForVotes() {
 					}
 				}()
 			}
+		case <-ns.shutdownAskForVotesCh:
+			return
 		}
 	}
 }
@@ -102,11 +108,20 @@ func (ns *nodeState) handleVotes() {
 
 			if resp.Term == ns.term && resp.VoteGranted {
 				ns.electionVotes++
-				if ns.electionVotes > int(ns.numberNodes)/2 && ns.currentLeader == "" {
+
+				oldMajority := 0
+				if ns.peers.OldConfig != nil {
+					oldMajority = int(len(ns.peers.OldConfig)/2) + 1
+				}
+				newMajority := int(len(ns.peers.NewConfig)/2) + 1
+
+				if ns.electionVotes >= oldMajority && ns.electionVotes >= newMajority && ns.currentLeader == "" {
 					ns.winElection()
 				}
 			}
 			ns.mutex.Unlock()
+		case <-ns.shutdownHandleVotesCh:
+			return
 		}
 	}
 }

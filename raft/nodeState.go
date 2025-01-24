@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"net/rpc"
 	"sync"
 	"time"
@@ -31,17 +32,20 @@ type nodeState struct {
 	id              ServerID
 	state           uint
 	term            uint
-	numberNodes     uint
 	peers           Configuration
 	peersConnection map[ServerID]*rpc.Client
+	shutdownCh      chan struct{}
 	// elction logic
-	electionTimer  *time.Timer
-	minimumTimer   *time.Timer
-	electionVotes  int
-	voteResponseCh chan RequestVoteResult
-	voteRequestCh  chan RequestVoteArguments
-	myVote         ServerID
-	currentLeader  ServerID
+	electionTimer         *time.Timer
+	minimumTimer          *time.Timer
+	shutdownTimers        chan struct{}
+	electionVotes         int
+	voteResponseCh        chan RequestVoteResult
+	shutdownAskForVotesCh chan struct{}
+	voteRequestCh         chan RequestVoteArguments
+	shutdownHandleVotesCh chan struct{}
+	myVote                ServerID
+	currentLeader         ServerID
 	// leader logic
 	leaderCh         chan bool
 	firstHeartbeatCh chan struct{}
@@ -58,19 +62,23 @@ type nodeState struct {
 }
 
 func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
+	peers[id] = "" // add self to the peers list
 	return &nodeState{
-		id:               id,
-		term:             0,
-		state:            Follower,
-		numberNodes:      uint(len(peers) + 1),
-		peers:            Configuration{OldConfig: nil, NewConfig: peers},
-		peersConnection:  make(map[ServerID]*rpc.Client),
-		voteResponseCh:   make(chan RequestVoteResult, len(peers)),
-		voteRequestCh:    make(chan RequestVoteArguments, 1),
-		currentLeader:    "",
-		leaderCh:         make(chan bool),
-		firstHeartbeatCh: make(chan struct{}),
-		nextIndex:        nil,
+		id:                    id,
+		term:                  0,
+		state:                 Follower,
+		peers:                 Configuration{OldConfig: nil, NewConfig: peers},
+		peersConnection:       make(map[ServerID]*rpc.Client),
+		shutdownCh:            make(chan struct{}),
+		shutdownTimers:        make(chan struct{}),
+		shutdownHandleVotesCh: make(chan struct{}),
+		voteResponseCh:        make(chan RequestVoteResult, len(peers)),
+		shutdownAskForVotesCh: make(chan struct{}),
+		voteRequestCh:         make(chan RequestVoteArguments, 1),
+		currentLeader:         "",
+		leaderCh:              make(chan bool),
+		firstHeartbeatCh:      make(chan struct{}),
+		nextIndex:             nil,
 		log: logStruct{
 			entries: []LogEntry{
 				// to start the log from index 1 we add a default entry
@@ -91,10 +99,38 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 	}
 }
 
+func (ns *nodeState) closeChannels() {
+	close(ns.shutdownCh)
+	close(ns.shutdownTimers)
+	close(ns.shutdownAskForVotesCh)
+	close(ns.shutdownHandleVotesCh)
+	close(ns.voteResponseCh)
+	close(ns.voteRequestCh)
+	close(ns.firstHeartbeatCh)
+	close(ns.leaderCh)
+}
+
 func (ns *nodeState) handleNodeState() {
 	ns.startTimer()
 	go ns.handleTimer()
 
 	go ns.askForVotes()
 	go ns.handleVotes()
+
+	for {
+		select {
+		case <-ns.shutdownCh:
+			ns.mutex.Lock()
+			if ns.state == Leader {
+				ns.revertToFollower()
+			}
+			ns.shutdownTimers <- struct{}{}
+			ns.shutdownAskForVotesCh <- struct{}{}
+			ns.shutdownHandleVotesCh <- struct{}{}
+			ns.closeChannels()
+			ns.mutex.Unlock()
+			log.Println("Node", ns.id, "shutdown")
+			return
+		}
+	}
 }

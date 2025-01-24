@@ -61,23 +61,36 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 				for _, logEntryToReplicate := range logEntriesToReplicate {
 					// the leader checks for commit just for log entries of the leader current term that are not committed
 					repState, ok := ns.pendingCommit[logEntryToReplicate.Index]
+					_, okInOldC := ns.peers.OldConfig[node]
+					_, okInNewC := ns.peers.NewConfig[node]
+
 					if logEntryToReplicate.Term == ns.term && ns.state == Leader && ok {
-						committed := false
-						if repState.replicationCounter+1 > ns.numberNodes/2 && !repState.committed {
-							committed = true
+						// update the replication state
+						// joint-consensus: checks also for the old configuraiton
+						if !repState.committedOldC && okInOldC {
+							if repState.replicationCounterOldC+1 > uint(len(ns.peers.OldConfig)/2) {
+								repState.committedOldC = true
+							} else {
+								repState.replicationCounterOldC++
+							}
+						}
+
+						// normal consensus: checks only for the new configuration
+						if !repState.committedNewC && okInNewC {
+							if repState.replicationCounterNewC+1 > uint(len(ns.peers.NewConfig)/2) {
+								repState.committedNewC = true
+							} else {
+								repState.replicationCounterNewC++
+							}
+						}
+
+						if repState.committedOldC && repState.committedNewC {
 							ns.log.lastCommitedIndex = logEntryToReplicate.Index
 							repState.clientCh <- true
 							log.Println("committed log entry in position", logEntryToReplicate.Index)
-						}
-
-						if committed {
-							// remove pending commit
-							delete(ns.pendingCommit, logEntryToReplicate.Index)
+							delete(ns.pendingCommit, logEntryToReplicate.Index) // remove the entry from the pending commit
 						} else {
-							ns.pendingCommit[logEntryToReplicate.Index] = replicationState{
-								replicationCounter: repState.replicationCounter + 1,
-								committed:          committed,
-							}
+							ns.pendingCommit[logEntryToReplicate.Index] = repState // update the replication state
 						}
 					}
 					ns.nextIndex[node] = logEntryToReplicate.Index + 1
@@ -94,7 +107,6 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 						}
 					}
 				}
-
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
@@ -118,19 +130,25 @@ func (ns *nodeState) handleLeadership() {
 				return
 			}
 		case <-ns.logEntriesCh:
+			ns.mutex.Lock()
 			for node, peerConnection := range ns.peersConnection {
 				go ns.handleReplicationLog(node, peerConnection)
 			}
+			ns.mutex.Unlock()
 		case <-ns.firstHeartbeatCh:
+			ns.mutex.Lock()
 			// the first heartbeat is sent immediately
 			for node, peerConnection := range ns.peersConnection {
 				go ns.handleReplicationLog(node, peerConnection)
 			}
+			ns.mutex.Unlock()
 		case <-ticker.C:
 			// heartbeat
+			ns.mutex.Lock()
 			for node, peerConnection := range ns.peersConnection {
 				go ns.handleReplicationLog(node, peerConnection)
 			}
+			ns.mutex.Unlock()
 		}
 	}
 }

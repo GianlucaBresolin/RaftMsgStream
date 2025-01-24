@@ -127,13 +127,18 @@ func main() {
 		}
 	}
 
+	node4 := raft.NewNode("node4", ":5005", map[raft.ServerID]raft.Port{
+		"node1": ":5001",
+		"node3": ":5003"})
+	node4.RegisterNode()
+	node4.PrepareConnections()
+
 	successRequests = 0
 	for successRequests != 1 {
 		time.Sleep(1 * time.Second)
 		command := map[string]map[string]string{
 			"newConfig": {
 				"node1": ":5001",
-				"node2": ":5002",
 				"node3": ":5003",
 			}}
 		data, _ := json.Marshal(command)

@@ -36,10 +36,12 @@ func (ns *nodeState) handleTimer() {
 		case <-ns.electionTimer.C:
 			// timer expired
 			ns.mutex.Lock()
-			log.Println("Election timeout expired, starting election...")
+			log.Println(ns.id, ": Election timeout expired, starting election...")
 			ns.startElection()
 			ns.resetTimer()
 			ns.mutex.Unlock()
+		case <-ns.shutdownTimers:
+			return
 		}
 	}
 }

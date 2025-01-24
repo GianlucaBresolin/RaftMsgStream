@@ -13,9 +13,11 @@ type ClientRequestResult struct {
 }
 
 type replicationState struct {
-	replicationCounter uint
-	committed          bool
-	clientCh           chan bool
+	replicationCounterOldC uint
+	replicationCounterNewC uint
+	committedOldC          bool
+	committedNewC          bool
+	clientCh               chan bool
 }
 
 func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
@@ -54,11 +56,26 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 
 			n.state.log.entries = append(n.state.log.entries, logEntry)
 			clientCh := make(chan bool)
-			n.state.pendingCommit[logEntry.Index] = replicationState{
-				replicationCounter: 1, // leader already replicated
-				committed:          false,
-				clientCh:           clientCh,
+
+			commitedOldC := false
+			if n.state.peers.OldConfig == nil {
+				commitedOldC = true
 			}
+
+			_, ok := n.state.peers.NewConfig[n.state.id]
+			replicationCounterNewC := 0
+			if ok {
+				replicationCounterNewC = 1 // leader already replicated
+			}
+
+			n.state.pendingCommit[logEntry.Index] = replicationState{
+				replicationCounterOldC: 1, // leader already replicated
+				replicationCounterNewC: uint(replicationCounterNewC),
+				committedOldC:          commitedOldC,
+				committedNewC:          false,
+				clientCh:               clientCh,
+			}
+
 			n.state.lastUncommitedRequestof[req.Id] = req.USN
 
 			n.state.logEntriesCh <- struct{}{} // trigger log replication

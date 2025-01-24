@@ -1,9 +1,5 @@
 package raft
 
-import (
-	"log"
-)
-
 type RequestVoteArguments struct {
 	Term         uint
 	CandidateId  ServerID
@@ -124,16 +120,29 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 		}
 		if lastConfigurationEntry.Command != nil {
 			n.state.applyConfiguration(lastConfigurationEntry.Command)
-			log.Println(n.state.id, n.state.peers)
 		}
 
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
-			// update the lastUSNof for all the committed requests
-			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex:] {
+			lastCommitedIndex := arg.LeaderCommit
+			if arg.LeaderCommit > n.state.log.lastIndex() {
+				lastCommitedIndex = n.state.log.lastIndex()
+			}
+
+			var lastConfigurationEntry LogEntry
+			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex : lastCommitedIndex+1] {
+				// update the lastUSNof for all the committed requests
 				if entry.Client != "" {
 					//avoid NO-OP entry
 					n.state.lastUSNof[entry.Client] = entry.USN
 				}
+				// check if the committed entry was a configuration change
+				if entry.Type == 1 {
+					lastConfigurationEntry = entry
+				}
+			}
+			// apply the last committed configuration change
+			if lastConfigurationEntry.Command != nil {
+				n.state.applyCommitedConfiguration(lastConfigurationEntry.Command)
 			}
 
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
