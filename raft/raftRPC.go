@@ -96,7 +96,7 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 	if n.state.state == Candidate {
 		n.state.revertToFollower()
 		n.state.currentLeader = arg.LeaderId
-		log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
+		// log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
 	} else if n.state.currentLeader == "" {
 		n.state.currentLeader = arg.LeaderId
 	}
@@ -112,14 +112,19 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 	}
 
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
-		n.state.log.entries = append(n.state.log.entries, arg.Entries...)
+		n.state.log.entries = append(n.state.log.entries[:arg.PreviousLogIndex+1], arg.Entries...)
 		res.Success = true
 
 		// checks for confgiuration changes
+		var lastConfigurationEntry LogEntry
 		for _, entry := range arg.Entries {
 			if entry.Type == 1 {
-				n.state.applyConfiguration(entry.Command)
+				lastConfigurationEntry = entry
 			}
+		}
+		if lastConfigurationEntry.Command != nil {
+			n.state.applyConfiguration(lastConfigurationEntry.Command)
+			log.Println(n.state.id, n.state.peers)
 		}
 
 		if arg.LeaderCommit > n.state.log.lastCommitedIndex {

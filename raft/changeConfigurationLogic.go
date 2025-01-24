@@ -67,13 +67,13 @@ func (ns *nodeState) prepareCnew() {
 	<-clientCh
 }
 
-type old_newConfiguration struct {
+type commandConfiguration struct {
 	OldC map[ServerID]Port `json:"OldConfig"`
 	NewC map[ServerID]Port `json:"NewConfig"`
 }
 
 func (ns *nodeState) applyConfiguration(command []byte) {
-	newConfiguration := old_newConfiguration{}
+	newConfiguration := commandConfiguration{}
 	err := json.Unmarshal(command, &newConfiguration)
 	if err != nil {
 		log.Println("Error unmarshalling new configuration: restore the old configuration")
@@ -82,7 +82,7 @@ func (ns *nodeState) applyConfiguration(command []byte) {
 	}
 
 	ns.peers = Configuration{
-		OldConfig: newConfiguration.NewC,
+		OldConfig: newConfiguration.OldC,
 		NewConfig: newConfiguration.NewC,
 	}
 }
