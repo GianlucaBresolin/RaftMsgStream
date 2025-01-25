@@ -149,7 +149,13 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 			// remove all our pending commit that are less than or equal to lastCommitedIndex
 			for index, replicationState := range n.state.pendingCommit {
 				if index <= n.state.log.lastCommitedIndex {
-					replicationState.clientCh <- true // TODO: check if the committed entry is the same as the one requested by the client, how to manage the removed pending commmit
+					if replicationState.term == n.state.log.entries[index].Term {
+						// the entry was committed
+						replicationState.clientCh <- true
+					} else {
+						// the entry was not committed
+						replicationState.clientCh <- false
+					}
 					delete(n.state.pendingCommit, index)
 				}
 			}

@@ -17,6 +17,7 @@ type replicationState struct {
 	replicationCounterNewC uint
 	committedOldC          bool
 	committedNewC          bool
+	term                   uint
 	clientCh               chan bool
 }
 
@@ -73,6 +74,7 @@ func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestRe
 				replicationCounterNewC: uint(replicationCounterNewC),
 				committedOldC:          commitedOldC,
 				committedNewC:          false,
+				term:                   n.state.term,
 				clientCh:               clientCh,
 			}
 
