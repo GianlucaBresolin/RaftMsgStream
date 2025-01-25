@@ -7,10 +7,11 @@ import (
 
 func (ns *nodeState) startElection() {
 	ns.state = Candidate
-	ns.electionVotes = 0
+	ns.electionVotesNewC = 0
+	ns.electionVotesOldC = 0
 	ns.term++
 	ns.myVote = ns.id
-	ns.voteResponseCh <- RequestVoteResult{ns.term, true}
+	ns.voteResponseCh <- RequestVoteResultWithServerID{ns.id, RequestVoteResult{ns.term, true}}
 	ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, ns.log.lastIndex(), ns.log.lastTerm()}
 	log.Println("Starting election for term", ns.term)
 }
@@ -54,12 +55,17 @@ func (ns *nodeState) revertToFollower() {
 	ns.resetTimer()
 }
 
+type RequestVoteResultWithServerID struct {
+	serverID ServerID
+	result   RequestVoteResult
+}
+
 func (ns *nodeState) askForVotes() {
 	for {
 		select {
 		case requestVoteArguments := <-ns.voteRequestCh:
 			// we need to ask for votes
-			for _, peerConnection := range ns.peersConnection {
+			for peer, peerConnection := range ns.peersConnection {
 				//log.Println("Asking for votes", ns.id, "for term", ns.term)
 				go func() {
 					voteResponse := &RequestVoteResult{}
@@ -73,7 +79,8 @@ func (ns *nodeState) askForVotes() {
 						if err != nil {
 							log.Println("Error sending RequestVoteRPC to", ns.id, ":", err)
 						} else {
-							ns.voteResponseCh <- *voteResponse
+							voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
+							ns.voteResponseCh <- voteResponseWithServerID
 							stopAskingVote = true
 						}
 
@@ -101,13 +108,24 @@ func (ns *nodeState) handleVotes() {
 		select {
 		case resp := <-ns.voteResponseCh:
 			ns.mutex.Lock()
-			if resp.Term > ns.term {
-				ns.term = resp.Term
+			if resp.result.Term > ns.term {
+				ns.term = resp.result.Term
 				ns.revertToFollower()
 			}
 
-			if resp.Term == ns.term && resp.VoteGranted {
-				ns.electionVotes++
+			okOldC := false
+			if ns.peers.OldConfig != nil { // we are in a configuration change
+				_, okOldC = ns.peers.OldConfig[resp.serverID]
+			}
+			_, okNewC := ns.peers.NewConfig[resp.serverID]
+
+			if resp.result.Term == ns.term && resp.result.VoteGranted {
+				if okOldC {
+					ns.electionVotesOldC++
+				}
+				if okNewC {
+					ns.electionVotesNewC++
+				}
 
 				oldMajority := 0
 				if ns.peers.OldConfig != nil {
@@ -115,7 +133,7 @@ func (ns *nodeState) handleVotes() {
 				}
 				newMajority := int(len(ns.peers.NewConfig)/2) + 1
 
-				if ns.electionVotes >= oldMajority && ns.electionVotes >= newMajority && ns.currentLeader == "" {
+				if ns.electionVotesOldC >= oldMajority && ns.electionVotesNewC >= newMajority && ns.currentLeader == "" {
 					ns.winElection()
 				}
 			}

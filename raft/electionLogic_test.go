@@ -153,7 +153,7 @@ func TestAskForVotes(t *testing.T) {
 			"3": client2,
 		},
 		voteRequestCh:  make(chan RequestVoteArguments, 1),
-		voteResponseCh: make(chan RequestVoteResult, 2),
+		voteResponseCh: make(chan RequestVoteResultWithServerID, 2),
 		term:           1,
 		state:          Candidate,
 	}
@@ -165,7 +165,7 @@ func TestAskForVotes(t *testing.T) {
 
 	responses := make([]RequestVoteResult, 0)
 	for response := range nodeState.voteResponseCh {
-		responses = append(responses, response)
+		responses = append(responses, response.result)
 		if len(responses) == 2 {
 			break
 		}
@@ -217,7 +217,7 @@ func TestAskForStaledVotes(t *testing.T) {
 			"2": client1,
 		},
 		voteRequestCh:  make(chan RequestVoteArguments, 1),
-		voteResponseCh: make(chan RequestVoteResult, 2),
+		voteResponseCh: make(chan RequestVoteResultWithServerID, 2),
 		term:           2,
 		state:          Candidate,
 	}
@@ -229,7 +229,7 @@ func TestAskForStaledVotes(t *testing.T) {
 
 	responses := make([]RequestVoteResult, 0)
 	for response := range nodeState.voteResponseCh {
-		responses = append(responses, response)
+		responses = append(responses, response.result)
 		if len(responses) == 1 {
 			break
 		}
@@ -248,25 +248,25 @@ func TestAskForStaledVotes(t *testing.T) {
 
 func TestHandleVotesSuccess(t *testing.T) {
 	nodeState := &nodeState{
-		id:             "id",
-		term:           1,
-		state:          Candidate,
-		electionVotes:  0,
-		voteResponseCh: make(chan RequestVoteResult, 3),
-		electionTimer:  time.NewTimer(time.Second),
-		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
+		id:                "id",
+		term:              1,
+		state:             Candidate,
+		electionVotesNewC: 0,
+		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
+		electionTimer:     time.NewTimer(time.Second),
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResult{1, true}
-	nodeState.voteResponseCh <- RequestVoteResult{1, true}
-	nodeState.voteResponseCh <- RequestVoteResult{1, false}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, true}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
 	go nodeState.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotes != 2 {
-		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotes)
+	if nodeState.electionVotesNewC != 2 {
+		t.Errorf("Expected electionVotes to be 2, got %d", nodeState.electionVotesNewC)
 	}
 
 	if nodeState.state != Leader {
@@ -276,26 +276,26 @@ func TestHandleVotesSuccess(t *testing.T) {
 
 func TestHandleVotesFailure(t *testing.T) {
 	nodeState := &nodeState{
-		id:             "id",
-		term:           1,
-		state:          Candidate,
-		electionVotes:  0,
-		voteResponseCh: make(chan RequestVoteResult, 3),
-		electionTimer:  time.NewTimer(time.Second),
-		minimumTimer:   time.NewTimer(time.Second),
-		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
+		id:                "id",
+		term:              1,
+		state:             Candidate,
+		electionVotesNewC: 0,
+		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
+		electionTimer:     time.NewTimer(time.Second),
+		minimumTimer:      time.NewTimer(time.Second),
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResult{1, true}
-	nodeState.voteResponseCh <- RequestVoteResult{1, false}
-	nodeState.voteResponseCh <- RequestVoteResult{1, false}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, false}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
 	go nodeState.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotes != 1 {
-		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotes)
+	if nodeState.electionVotesNewC != 1 {
+		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotesNewC)
 	}
 
 	if nodeState.state != Candidate {
@@ -305,26 +305,26 @@ func TestHandleVotesFailure(t *testing.T) {
 
 func TestHandleVotesWithNewTerm(t *testing.T) {
 	nodeState := &nodeState{
-		id:             "id",
-		term:           1,
-		state:          Candidate,
-		electionVotes:  0,
-		voteResponseCh: make(chan RequestVoteResult, 3),
-		electionTimer:  time.NewTimer(time.Second),
-		minimumTimer:   time.NewTimer(time.Second),
-		peers:          Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
+		id:                "id",
+		term:              1,
+		state:             Candidate,
+		electionVotesNewC: 0,
+		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
+		electionTimer:     time.NewTimer(time.Second),
+		minimumTimer:      time.NewTimer(time.Second),
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResult{1, true}
-	nodeState.voteResponseCh <- RequestVoteResult{2, false}
-	nodeState.voteResponseCh <- RequestVoteResult{2, false}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{2, true}}
+	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
 	go nodeState.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotes != 1 {
-		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotes)
+	if nodeState.electionVotesNewC != 1 {
+		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotesNewC)
 	}
 
 	if nodeState.state != Follower {

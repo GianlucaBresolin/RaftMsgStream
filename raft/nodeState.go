@@ -39,8 +39,9 @@ type nodeState struct {
 	electionTimer         *time.Timer
 	minimumTimer          *time.Timer
 	shutdownTimers        chan struct{}
-	electionVotes         int
-	voteResponseCh        chan RequestVoteResult
+	electionVotesNewC     int
+	electionVotesOldC     int
+	voteResponseCh        chan RequestVoteResultWithServerID
 	shutdownAskForVotesCh chan struct{}
 	voteRequestCh         chan RequestVoteArguments
 	shutdownHandleVotesCh chan struct{}
@@ -72,7 +73,7 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		shutdownCh:            make(chan struct{}),
 		shutdownTimers:        make(chan struct{}),
 		shutdownHandleVotesCh: make(chan struct{}),
-		voteResponseCh:        make(chan RequestVoteResult, len(peers)),
+		voteResponseCh:        make(chan RequestVoteResultWithServerID, len(peers)),
 		shutdownAskForVotesCh: make(chan struct{}),
 		voteRequestCh:         make(chan RequestVoteArguments, 1),
 		currentLeader:         "",
