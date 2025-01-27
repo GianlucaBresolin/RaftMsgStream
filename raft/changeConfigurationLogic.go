@@ -39,8 +39,10 @@ func (ns *nodeState) prepareCold_new(command []byte) []byte {
 			} else {
 				log.Printf("Node %s connected to %s", ns.id, peer)
 			}
-
 			ns.peersConnection[peer] = client
+
+			// update the nextIndex
+			ns.nextIndex[peer] = ns.log.lastIndex() + 1
 		}
 	}
 

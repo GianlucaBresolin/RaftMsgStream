@@ -66,13 +66,16 @@ func main() {
 	//node1 := raft.NewNode("node1", ":5001", map[raft.ServerID]raft.Port{})
 	node1 := raft.NewNode("node1", ":5001", map[raft.ServerID]raft.Port{
 		"node2": ":5002",
-		"node3": ":5003"})
+		"node3": ":5003"},
+		false)
 	node2 := raft.NewNode("node2", ":5002", map[raft.ServerID]raft.Port{
 		"node1": ":5001",
-		"node3": ":5003"})
+		"node3": ":5003"},
+		false)
 	node3 := raft.NewNode("node3", ":5003", map[raft.ServerID]raft.Port{
 		"node1": ":5001",
-		"node2": ":5002"})
+		"node2": ":5002"},
+		false)
 
 	nodeMap := map[raft.ServerID]raft.Port{
 		"node1": ":5001",
@@ -130,9 +133,11 @@ func main() {
 	node4 := raft.NewNode("node4", ":5005", map[raft.ServerID]raft.Port{
 		"node1": ":5001",
 		"node2": ":5002",
-		"node3": ":5003"})
+		"node3": ":5003"},
+		true)
 	node4.RegisterNode()
 	node4.PrepareConnections()
+	go node4.Run()
 
 	successRequests = 0
 	for successRequests != 1 {
@@ -140,7 +145,9 @@ func main() {
 		command := map[string]map[string]string{
 			"newConfig": {
 				"node1": ":5001",
+				"node2": ":5002",
 				"node3": ":5003",
+				"node4": ":5005",
 			}}
 		data, _ := json.Marshal(command)
 		args := raft.ClientRequestArguments{

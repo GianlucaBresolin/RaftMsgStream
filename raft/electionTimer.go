@@ -36,6 +36,10 @@ func (ns *nodeState) handleTimer() {
 		case <-ns.electionTimer.C:
 			// timer expired
 			ns.mutex.Lock()
+			if ns.unvotingServer { // do not start election if the server is unvoting
+				ns.mutex.Unlock()
+				continue
+			}
 			log.Println(ns.id, ": Election timeout expired, starting election...")
 			ns.startElection()
 			ns.resetTimer()

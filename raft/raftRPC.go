@@ -16,6 +16,13 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 	n.state.mutex.Lock()
 	defer n.state.mutex.Unlock()
 
+	if n.state.unvotingServer {
+		// discard vote request to avoid disruption from unvoting servers
+		res.Term = req.Term
+		res.VoteGranted = false
+		return nil
+	}
+
 	// discard vote request to avoid disruption from removed servers
 	select {
 	case <-n.state.minimumTimer.C:
@@ -145,7 +152,14 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 				n.state.applyCommitedConfiguration(lastConfigurationEntry.Command)
 			}
 
+			// update lastCommitedIndex
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
+
+			if n.state.unvotingServer && n.state.log.lastCommitedIndex == arg.LeaderCommit {
+				// unvoting server has caught up with the leader
+				n.state.unvotingServer = false
+			}
+
 			// remove all our pending commit that are less than or equal to lastCommitedIndex
 			for index, replicationState := range n.state.pendingCommit {
 				if index <= n.state.log.lastCommitedIndex {

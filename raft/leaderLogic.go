@@ -107,13 +107,14 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 						}
 					}
 				}
+				ns.mutex.Unlock()
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
 				ns.nextIndex[node]--
+				ns.mutex.Unlock()
 				ns.handleReplicationLog(node, peerConnection)
 			}
-			ns.mutex.Unlock()
 		}
 	}
 }

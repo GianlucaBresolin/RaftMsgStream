@@ -11,9 +11,9 @@ type Node struct {
 	port  Port
 }
 
-func NewNode(id ServerID, port Port, peers map[ServerID]Port) *Node {
+func NewNode(id ServerID, port Port, peers map[ServerID]Port, unvoting bool) *Node {
 	return &Node{
-		state: newNodeState(id, peers),
+		state: newNodeState(id, peers, unvoting),
 		port:  port,
 	}
 }

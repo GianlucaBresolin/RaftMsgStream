@@ -58,11 +58,13 @@ type nodeState struct {
 	pendingCommit           map[uint]replicationState
 	lastUSNof               map[string]int
 	lastUncommitedRequestof map[string]int
+	// unvoting logic
+	unvotingServer bool
 	// mutex
 	mutex sync.Mutex
 }
 
-func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
+func newNodeState(id ServerID, peers map[ServerID]Port, unvoting bool) *nodeState {
 	peers[id] = "" // add self to the peers list
 	return &nodeState{
 		id:                    id,
@@ -97,6 +99,7 @@ func newNodeState(id ServerID, peers map[ServerID]Port) *nodeState {
 		pendingCommit:           make(map[uint]replicationState),
 		lastUSNof:               make(map[string]int),
 		lastUncommitedRequestof: make(map[string]int),
+		unvotingServer:          unvoting,
 	}
 }
 
@@ -111,8 +114,20 @@ func (ns *nodeState) closeChannels() {
 	close(ns.leaderCh)
 }
 
+func (ns *nodeState) joinCluster() {
+	for ns.unvotingServer {
+		// wait to catch up with the cluster
+	}
+}
+
 func (ns *nodeState) handleNodeState() {
 	ns.startTimer()
+
+	for ns.unvotingServer {
+		// wait to catch up with the cluster
+		ns.joinCluster()
+	}
+
 	go ns.handleTimer()
 
 	go ns.askForVotes()
@@ -125,9 +140,9 @@ func (ns *nodeState) handleNodeState() {
 			if ns.state == Leader {
 				ns.revertToFollower()
 			}
-			ns.shutdownTimers <- struct{}{}
 			ns.shutdownAskForVotesCh <- struct{}{}
 			ns.shutdownHandleVotesCh <- struct{}{}
+			ns.shutdownTimers <- struct{}{}
 			ns.closeChannels()
 			ns.mutex.Unlock()
 			log.Println("Node", ns.id, "shutdown")
