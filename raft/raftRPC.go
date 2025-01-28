@@ -155,11 +155,6 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 			// update lastCommitedIndex
 			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
 
-			if n.state.unvotingServer && n.state.log.lastCommitedIndex == arg.LeaderCommit {
-				// unvoting server has caught up with the leader
-				n.state.unvotingServer = false
-			}
-
 			// remove all our pending commit that are less than or equal to lastCommitedIndex
 			for index, replicationState := range n.state.pendingCommit {
 				if index <= n.state.log.lastCommitedIndex {

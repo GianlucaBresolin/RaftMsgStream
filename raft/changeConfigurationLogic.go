@@ -32,17 +32,21 @@ func (ns *nodeState) prepareCold_new(command []byte) []byte {
 		_, okInNewC := ns.peers.NewConfig[peer]
 
 		if okInNewC && !okInOldC && peer != ns.id {
-			// add the connection
-			client, err := rpc.Dial("tcp", "localhost"+string(port))
-			if err != nil {
-				log.Printf("Failed to dial %s: %v", peer, err)
-			} else {
-				log.Printf("Node %s connected to %s", ns.id, peer)
-			}
-			ns.peersConnection[peer] = client
+			_, okInUnv := ns.unvotingServers[peer]
+			if !okInUnv {
+				// (otherwise we already have a connection to this node in the unvoting servers)
+				// add the connection
+				client, err := rpc.Dial("tcp", "localhost"+string(port))
+				if err != nil {
+					log.Printf("Failed to dial %s: %v", peer, err)
+				} else {
+					log.Printf("Node %s connected to %s", ns.id, peer)
+				}
+				ns.peersConnection[peer] = client
 
-			// update the nextIndex
-			ns.nextIndex[peer] = ns.log.lastIndex() + 1
+				// update the nextIndex
+				ns.nextIndex[peer] = ns.log.lastIndex() + 1
+			}
 		}
 	}
 
@@ -124,6 +128,13 @@ func (ns *nodeState) applyConfiguration(command []byte) {
 		NewConfig: newConfiguration.NewC,
 	}
 
+	// if we are an unvoting node and we are in the new configuration, we need to become a voting node
+	_, ok := newConfiguration.NewC[ns.id]
+	if ok && ns.unvotingServer {
+		ns.unvotingServer = false
+		log.Println("Node", ns.id, "becomes a voting node")
+	}
+
 	// update peers connection
 	if newConfiguration.OldC != nil { // it is a Cold,new configuration
 		for peer, port := range ns.peers.NewConfig {
@@ -131,15 +142,18 @@ func (ns *nodeState) applyConfiguration(command []byte) {
 			_, okInNewC := newConfiguration.NewC[peer]
 
 			if okInNewC && !okInOldC && peer != ns.id {
-				// add the connection
-				client, err := rpc.Dial("tcp", "localhost"+string(port))
-				if err != nil {
-					log.Printf("Failed to dial %s: %v", peer, err)
-				} else {
-					log.Printf("Node %s connected to %s", ns.id, peer)
+				_, okInUnv := ns.unvotingServers[peer]
+				if !okInUnv {
+					// (otherwise we already have a connection to this node in the unvoting servers)
+					// add the connection
+					client, err := rpc.Dial("tcp", "localhost"+string(port))
+					if err != nil {
+						log.Printf("Failed to dial %s: %v", peer, err)
+					} else {
+						log.Printf("Node %s connected to %s", ns.id, peer)
+					}
+					ns.peersConnection[peer] = client
 				}
-
-				ns.peersConnection[peer] = client
 			}
 		}
 	}
@@ -164,13 +178,15 @@ func (ns *nodeState) applyCommitedConfiguration(command []byte) {
 	if newConfiguration.OldC == nil { // it is a Cnew configuration
 		for peer, connection := range ns.peersConnection {
 			_, okInNewC := newConfiguration.NewC[peer]
+			_, okInUnv := ns.unvotingServers[peer]
 
-			if !okInNewC {
-				// remove the connection
+			if !okInNewC && !okInUnv {
+				// remove the connection (it is not in the new configuration and neither in the unvoting servers)
 				log.Println("Closing connection to", peer)
 				connection.Close()
 				delete(ns.peersConnection, peer)
 			}
 		}
+
 	}
 }

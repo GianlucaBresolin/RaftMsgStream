@@ -8,13 +8,11 @@ import (
 
 type Node struct {
 	state *nodeState
-	port  Port
 }
 
 func NewNode(id ServerID, port Port, peers map[ServerID]Port, unvoting bool) *Node {
 	return &Node{
-		state: newNodeState(id, peers, unvoting),
-		port:  port,
+		state: newNodeState(id, port, peers, unvoting),
 	}
 }
 
@@ -25,11 +23,11 @@ func (n *Node) RegisterNode() {
 		log.Fatalf("Failed to register node %s: %v", n.state.id, err)
 	}
 
-	listener, err := net.Listen("tcp", string(n.port))
+	listener, err := net.Listen("tcp", string(n.state.port))
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", n.port, err)
+		log.Fatalf("Failed to listen on port %s: %v", n.state.port, err)
 	}
-	log.Printf("Node %s is listening on %s\n", n.state.id, n.port)
+	log.Printf("Node %s is listening on %s\n", n.state.id, n.state.port)
 
 	go func() {
 		for {

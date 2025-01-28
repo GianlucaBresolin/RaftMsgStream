@@ -137,7 +137,7 @@ func main() {
 		true)
 	node4.RegisterNode()
 	node4.PrepareConnections()
-	go node4.Run()
+	go node4.Run() // join as unvoting server
 
 	successRequests = 0
 	for successRequests != 1 {
@@ -145,7 +145,6 @@ func main() {
 		command := map[string]map[string]string{
 			"newConfig": {
 				"node1": ":5001",
-				"node2": ":5002",
 				"node3": ":5003",
 				"node4": ":5005",
 			}}

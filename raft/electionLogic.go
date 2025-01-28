@@ -27,7 +27,7 @@ func (ns *nodeState) winElection() {
 	ns.currentLeader = ns.id
 	ns.nextIndex = make(map[ServerID]uint)
 
-	// initialize nextIndex for all peers
+	// initialize nextIndex for all peers (voting and unvoting nodes)
 	for peer := range ns.peers.OldConfig {
 		if peer != ns.id {
 			ns.nextIndex[peer] = ns.log.lastIndex() + 1
@@ -37,6 +37,9 @@ func (ns *nodeState) winElection() {
 		if peer != ns.id {
 			ns.nextIndex[peer] = ns.log.lastIndex() + 1
 		}
+	}
+	for peer := range ns.unvotingServers {
+		ns.nextIndex[peer] = ns.log.lastIndex() + 1
 	}
 
 	go ns.handleLeadership()

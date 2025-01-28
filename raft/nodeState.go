@@ -28,8 +28,14 @@ type Configuration struct {
 	NewConfig map[ServerID]Port
 }
 
+type unvotingServer struct {
+	port          Port
+	acknogwledges bool
+}
+
 type nodeState struct {
 	id              ServerID
+	port            Port
 	state           uint
 	term            uint
 	peers           Configuration
@@ -59,15 +65,17 @@ type nodeState struct {
 	lastUSNof               map[string]int
 	lastUncommitedRequestof map[string]int
 	// unvoting logic
-	unvotingServer bool
+	unvotingServer  bool
+	unvotingServers map[ServerID]unvotingServer
 	// mutex
 	mutex sync.Mutex
 }
 
-func newNodeState(id ServerID, peers map[ServerID]Port, unvoting bool) *nodeState {
+func newNodeState(id ServerID, port Port, peers map[ServerID]Port, unvoting bool) *nodeState {
 	peers[id] = "" // add self to the peers list
 	return &nodeState{
 		id:                    id,
+		port:                  port,
 		term:                  0,
 		state:                 Follower,
 		peers:                 Configuration{OldConfig: nil, NewConfig: peers},
@@ -100,6 +108,7 @@ func newNodeState(id ServerID, peers map[ServerID]Port, unvoting bool) *nodeStat
 		lastUSNof:               make(map[string]int),
 		lastUncommitedRequestof: make(map[string]int),
 		unvotingServer:          unvoting,
+		unvotingServers:         make(map[ServerID]unvotingServer),
 	}
 }
 
@@ -114,18 +123,42 @@ func (ns *nodeState) closeChannels() {
 	close(ns.leaderCh)
 }
 
-func (ns *nodeState) joinCluster() {
+func (ns *nodeState) handleUnvotingNode() {
+	// request to be added as unvoting server
+	args := AddUnvotingServerArguments{
+		ServerID: ns.id,
+		Port:     ns.port,
+	}
+	reply := AddUnvotingServerResult{
+		Success: false,
+	}
+
+	var leaderNode ServerID
+	for serverID := range ns.peers.NewConfig {
+		if serverID != ns.id {
+			leaderNode = serverID // not sure it is the leader, but we try with a random one to get otherwise the real leader
+			break
+		}
+	}
+
+	for !reply.Success {
+		err := ns.peersConnection[leaderNode].Call("Node.AddUnvotingServerRPC", args, &reply)
+		if err != nil {
+			log.Printf("Failed to add unvoting server %s: %v", ns.id, err)
+			return
+		}
+		leaderNode = reply.CurrentLeader
+	}
+
 	for ns.unvotingServer {
-		// wait to catch up with the cluster
 	}
 }
 
 func (ns *nodeState) handleNodeState() {
 	ns.startTimer()
 
-	for ns.unvotingServer {
-		// wait to catch up with the cluster
-		ns.joinCluster()
+	if ns.unvotingServer {
+		ns.handleUnvotingNode()
 	}
 
 	go ns.handleTimer()
