@@ -45,4 +45,6 @@ func (c *Client) SendMessage(group string, msg string) {
 		}
 		time.Sleep(1 * time.Second)
 	}
+
+	c.USN++
 }

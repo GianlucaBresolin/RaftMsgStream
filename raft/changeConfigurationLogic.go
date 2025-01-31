@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/rpc"
-	"time"
 )
 
 type newConfiguration struct {
@@ -56,8 +55,6 @@ func (rn *RaftNode) prepareCold_new(command []byte) []byte {
 }
 
 func (rn *RaftNode) prepareCnew() {
-	rn.mutex.Lock()
-
 	newConfiguration := Configuration{
 		OldConfig: nil,
 		NewConfig: rn.peers.NewConfig,
@@ -78,7 +75,6 @@ func (rn *RaftNode) prepareCnew() {
 	}
 
 	rn.log.entries = append(rn.log.entries, logEntry)
-	clientCh := make(chan bool)
 
 	_, ok := rn.peers.NewConfig[rn.id]
 	replicationCounter := 0
@@ -90,23 +86,12 @@ func (rn *RaftNode) prepareCnew() {
 		replicationCounterNewC: uint(replicationCounter),
 		committedOldC:          false,
 		committedNewC:          false,
-		clientCh:               clientCh,
+		clientCh:               nil, // no client to notify
 	}
 
 	rn.lastUncommitedRequestof[string(rn.id)] = rn.USN
 
 	rn.logEntriesCh <- struct{}{} // trigger log replication
-	rn.mutex.Unlock()
-
-	<-clientCh
-	// update our configuration
-	rn.mutex.Lock()
-	rn.peers = newConfiguration
-	rn.mutex.Unlock()
-	time.Sleep(time.Second) // wait to let the other nodes to know that this configuration is commited
-	rn.mutex.Lock()
-	rn.applyCommitedConfiguration(command)
-	rn.mutex.Unlock()
 }
 
 type commandConfiguration struct {
@@ -114,6 +99,7 @@ type commandConfiguration struct {
 	NewC map[ServerID]Port `json:"NewConfig"`
 }
 
+// applyConfiguration applies the configuration change to the state, even if it is not committed
 func (rn *RaftNode) applyConfiguration(command []byte) {
 	newConfiguration := commandConfiguration{}
 	err := json.Unmarshal(command, &newConfiguration)
@@ -159,6 +145,7 @@ func (rn *RaftNode) applyConfiguration(command []byte) {
 	}
 }
 
+// applyCommitedConfiguration applies the configuration change to the state, only if it is committed
 func (rn *RaftNode) applyCommitedConfiguration(command []byte) {
 	newConfiguration := commandConfiguration{}
 	err := json.Unmarshal(command, &newConfiguration)

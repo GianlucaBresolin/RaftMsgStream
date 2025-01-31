@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"log"
 	"net/rpc"
 	"time"
@@ -96,11 +97,36 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 					rn.nextIndex[node] = logEntryToReplicate.Index + 1
 				}
 
-				if previousLastCommitedIndex != rn.log.lastCommitedIndex {
+				if previousLastCommitedIndex < rn.log.lastCommitedIndex {
 					for _, entry := range rn.log.entries[previousLastCommitedIndex : rn.log.lastCommitedIndex+1] {
 						// if we update the lastCommitedIndex, we have to apply to the state all the committed action entries
 						if entry.Type == ActionEntry && entry.Command != nil {
 							rn.commitCh <- entry.Command
+						}
+
+						// if we update the lastCommitedIndex, we have also to check if we committed a configuration change
+						if entry.Type == ConfigurationEntry {
+							// if we committed Cold,new prepare Cnew
+							configuration := commandConfiguration{}
+							err := json.Unmarshal(entry.Command, &configuration)
+							if err != nil {
+								log.Println("Error unmarshalling the configuration")
+							}
+							if configuration.OldC != nil { // we have a Cold,new
+								rn.prepareCnew()
+							} else {
+								// we committed Cnew, we have to update the configuration (we have to wait in order to let
+								//the other nodes to know that this configuration is commited)
+								time.AfterFunc(1*time.Second, func() {
+									rn.mutex.Lock()
+									rn.peers = Configuration{
+										OldConfig: nil,
+										NewConfig: configuration.NewC,
+									}
+									rn.applyCommitedConfiguration(entry.Command)
+									rn.mutex.Unlock()
+								})
+							}
 						}
 
 						// if we update the lastCommitedIndex, we have also to update rn.lastUSNof and rn.pendingRequestof

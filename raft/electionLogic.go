@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 )
@@ -40,6 +41,58 @@ func (rn *RaftNode) winElection() {
 	}
 	for peer := range rn.unvotingServers {
 		rn.nextIndex[peer] = rn.log.lastIndex() + 1
+	}
+
+	// checks if we need to finish the configuration change
+	if rn.peers.OldConfig != nil {
+		// if we have in the uncommitted entries Cnew the configuration change will be correctly committed
+		cNew := false
+		for _, entry := range rn.log.entries[rn.log.lastCommitedIndex+1:] {
+			if entry.Type == ConfigurationEntry {
+				// we have Cnew in the uncommitted entries
+				cNew = true
+				break
+			}
+		}
+
+		if !cNew {
+			// we need to create Cnew and commit it
+			newConfiguration := Configuration{
+				OldConfig: nil,
+				NewConfig: rn.peers.NewConfig,
+			}
+
+			// notify other nodes by appending Cnew to the log
+			index := rn.log.lastIndex() + 1
+			command, _ := json.Marshal(newConfiguration)
+			rn.USN++
+
+			logEntry := LogEntry{
+				Index:   index,
+				Term:    rn.term,
+				Command: command,
+				Type:    ConfigurationEntry,
+				Client:  string(rn.id),
+				USN:     rn.USN,
+			}
+
+			rn.log.entries = append(rn.log.entries, logEntry)
+
+			_, ok := rn.peers.NewConfig[rn.id]
+			replicationCounter := 0
+			if ok {
+				replicationCounter = 1
+			}
+			rn.pendingCommit[index] = replicationState{
+				replicationCounterOldC: 1, // leader already replicated
+				replicationCounterNewC: uint(replicationCounter),
+				committedOldC:          false,
+				committedNewC:          false,
+				clientCh:               nil, // no client to notify
+			}
+
+			rn.lastUncommitedRequestof[string(rn.id)] = rn.USN
+		}
 	}
 
 	go rn.handleLeadership()

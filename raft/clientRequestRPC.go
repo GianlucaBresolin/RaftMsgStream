@@ -40,6 +40,14 @@ func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequ
 		if rn.lastUSNof[req.Id] < req.USN && rn.lastUncommitedRequestof[req.Id] < req.USN {
 			var command []byte
 			if req.Type == 1 {
+				// check if we altready have a configuration change in place
+				if rn.peers.OldConfig != nil {
+					// discard the request
+					res.Success = false
+					res.Leader = rn.id
+					rn.mutex.Unlock()
+					return nil
+				}
 				// prepare Cold,new
 				command = rn.prepareCold_new(req.Command)
 			} else {
@@ -84,11 +92,6 @@ func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequ
 			rn.mutex.Unlock()
 
 			committed := <-clientCh
-
-			// if was a change configuration request, trigger the Cnew entry
-			if req.Type == 1 && committed {
-				go rn.prepareCnew()
-			}
 
 			res.Success = committed
 			res.Leader = rn.id
