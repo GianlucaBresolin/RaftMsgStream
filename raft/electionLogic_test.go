@@ -8,7 +8,7 @@ import (
 )
 
 func TestStartElection(t *testing.T) {
-	nodeState := newNodeState("id", map[ServerID]Port{"2": "1234", "3": "1235"})
+	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
 	nodeState.term = 1
 
 	nodeState.startElection()
@@ -23,7 +23,7 @@ func TestStartElection(t *testing.T) {
 }
 
 func TestWinElection(t *testing.T) {
-	nodeState := newNodeState("id", map[ServerID]Port{"2": "1234", "3": "1235"})
+	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
 	nodeState.term = 1
 	nodeState.state = Candidate
 	nodeState.log.entries = []LogEntry{
@@ -58,7 +58,7 @@ func TestWinElection(t *testing.T) {
 }
 
 func TestRevertToFollower(t *testing.T) {
-	nodeState := newNodeState("id", map[ServerID]Port{"2": "1234", "3": "1235"})
+	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
 	nodeState.state = Leader
 	nodeState.currentLeader = "id"
 	nodeState.myVote = "id"

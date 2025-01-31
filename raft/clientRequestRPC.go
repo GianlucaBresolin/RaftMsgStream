@@ -21,84 +21,84 @@ type replicationState struct {
 	clientCh               chan bool
 }
 
-func (n *Node) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
-	n.state.mutex.Lock()
+func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
+	rn.mutex.Lock()
 
-	if n.state.state == Leader {
+	if rn.state == Leader {
 		// check if the request is stale
 		// check if we already committed the request
-		_, okC := n.state.lastUSNof[req.Id]
+		_, okC := rn.lastUSNof[req.Id]
 		if !okC {
-			n.state.lastUSNof[req.Id] = -1
+			rn.lastUSNof[req.Id] = -1
 		}
 		// check if we already have the request in the last requests
-		_, okP := n.state.lastUncommitedRequestof[req.Id]
+		_, okP := rn.lastUncommitedRequestof[req.Id]
 		if !okP {
-			n.state.lastUncommitedRequestof[req.Id] = -1
+			rn.lastUncommitedRequestof[req.Id] = -1
 		}
 
-		if n.state.lastUSNof[req.Id] < req.USN && n.state.lastUncommitedRequestof[req.Id] < req.USN {
+		if rn.lastUSNof[req.Id] < req.USN && rn.lastUncommitedRequestof[req.Id] < req.USN {
 			var command []byte
 			if req.Type == 1 {
 				// prepare Cold,new
-				command = n.state.prepareCold_new(req.Command)
+				command = rn.prepareCold_new(req.Command)
 			} else {
 				command = req.Command
 			}
 
 			logEntry := LogEntry{
-				Index:   n.state.log.lastIndex() + 1,
-				Term:    n.state.term,
+				Index:   rn.log.lastIndex() + 1,
+				Term:    rn.term,
 				Command: command,
 				Type:    req.Type,
 				Client:  req.Id,
 				USN:     req.USN,
 			}
 
-			n.state.log.entries = append(n.state.log.entries, logEntry)
+			rn.log.entries = append(rn.log.entries, logEntry)
 			clientCh := make(chan bool)
 
 			commitedOldC := false
-			if n.state.peers.OldConfig == nil {
+			if rn.peers.OldConfig == nil {
 				commitedOldC = true
 			}
 
-			_, ok := n.state.peers.NewConfig[n.state.id]
+			_, ok := rn.peers.NewConfig[rn.id]
 			replicationCounterNewC := 0
 			if ok {
 				replicationCounterNewC = 1 // leader already replicated
 			}
 
-			n.state.pendingCommit[logEntry.Index] = replicationState{
+			rn.pendingCommit[logEntry.Index] = replicationState{
 				replicationCounterOldC: 1, // leader already replicated
 				replicationCounterNewC: uint(replicationCounterNewC),
 				committedOldC:          commitedOldC,
 				committedNewC:          false,
-				term:                   n.state.term,
+				term:                   rn.term,
 				clientCh:               clientCh,
 			}
 
-			n.state.lastUncommitedRequestof[req.Id] = req.USN
+			rn.lastUncommitedRequestof[req.Id] = req.USN
 
-			n.state.logEntriesCh <- struct{}{} // trigger log replication
-			n.state.mutex.Unlock()
+			rn.logEntriesCh <- struct{}{} // trigger log replication
+			rn.mutex.Unlock()
 
 			committed := <-clientCh
 
 			// if was a change configuration request, trigger the Cnew entry
 			if req.Type == 1 && committed {
-				go n.state.prepareCnew()
+				go rn.prepareCnew()
 			}
 
 			res.Success = committed
-			res.Leader = n.state.id
+			res.Leader = rn.id
 			return nil
 		}
 	}
 
 	// redirect to leader if not leader or stale request
 	res.Success = false
-	res.Leader = n.state.currentLeader
-	n.state.mutex.Unlock()
+	res.Leader = rn.currentLeader
+	rn.mutex.Unlock()
 	return nil
 }

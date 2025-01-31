@@ -33,7 +33,7 @@ type unvotingServer struct {
 	acknogwledges bool
 }
 
-type nodeState struct {
+type RaftNode struct {
 	id              ServerID
 	port            Port
 	state           uint
@@ -64,6 +64,8 @@ type nodeState struct {
 	pendingCommit           map[uint]replicationState
 	lastUSNof               map[string]int
 	lastUncommitedRequestof map[string]int
+	// state machine logic
+	commitCh chan []byte
 	// unvoting logic
 	unvotingServer  bool
 	unvotingServers map[ServerID]unvotingServer
@@ -71,9 +73,9 @@ type nodeState struct {
 	mutex sync.Mutex
 }
 
-func newNodeState(id ServerID, port Port, peers map[ServerID]Port, unvoting bool) *nodeState {
+func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan []byte, unvoting bool) *RaftNode {
 	peers[id] = "" // add self to the peers list
-	return &nodeState{
+	raftNode := &RaftNode{
 		id:                    id,
 		port:                  port,
 		term:                  0,
@@ -107,78 +109,57 @@ func newNodeState(id ServerID, port Port, peers map[ServerID]Port, unvoting bool
 		pendingCommit:           make(map[uint]replicationState),
 		lastUSNof:               make(map[string]int),
 		lastUncommitedRequestof: make(map[string]int),
+		commitCh:                commandCh,
 		unvotingServer:          unvoting,
 		unvotingServers:         make(map[ServerID]unvotingServer),
 	}
+	raftNode.registerNode()
+	return raftNode
 }
 
-func (ns *nodeState) closeChannels() {
-	close(ns.shutdownCh)
-	close(ns.shutdownTimers)
-	close(ns.shutdownAskForVotesCh)
-	close(ns.shutdownHandleVotesCh)
-	close(ns.voteResponseCh)
-	close(ns.voteRequestCh)
-	close(ns.firstHeartbeatCh)
-	close(ns.leaderCh)
+func (rn *RaftNode) closeChannels() {
+	close(rn.shutdownCh)
+	close(rn.shutdownTimers)
+	close(rn.shutdownAskForVotesCh)
+	close(rn.shutdownHandleVotesCh)
+	close(rn.voteResponseCh)
+	close(rn.voteRequestCh)
+	close(rn.firstHeartbeatCh)
+	close(rn.leaderCh)
 }
 
-func (ns *nodeState) handleUnvotingNode() {
-	// request to be added as unvoting server
-	args := AddUnvotingServerArguments{
-		ServerID: ns.id,
-		Port:     ns.port,
-	}
-	reply := AddUnvotingServerResult{
-		Success: false,
-	}
+func (rn *RaftNode) handleUnvotingNode() {
+	rn.connectAsUnvotingNode()
 
-	var leaderNode ServerID
-	for serverID := range ns.peers.NewConfig {
-		if serverID != ns.id {
-			leaderNode = serverID // not sure it is the leader, but we try with a random one to get otherwise the real leader
-			break
-		}
-	}
-
-	for !reply.Success {
-		err := ns.peersConnection[leaderNode].Call("Node.AddUnvotingServerRPC", args, &reply)
-		if err != nil {
-			log.Printf("Failed to add unvoting server %s: %v", ns.id, err)
-			return
-		}
-		leaderNode = reply.CurrentLeader
-	}
-
-	for ns.unvotingServer {
+	for rn.unvotingServer {
 	}
 }
 
-func (ns *nodeState) handleNodeState() {
-	ns.startTimer()
+func (rn *RaftNode) HandleRaftNode() {
+	rn.startTimer()
 
-	if ns.unvotingServer {
-		ns.handleUnvotingNode()
+	if rn.unvotingServer {
+		rn.handleUnvotingNode()
 	}
 
-	go ns.handleTimer()
+	go rn.handleTimer()
 
-	go ns.askForVotes()
-	go ns.handleVotes()
+	go rn.askForVotes()
+	go rn.handleVotes()
 
 	for {
 		select {
-		case <-ns.shutdownCh:
-			ns.mutex.Lock()
-			if ns.state == Leader {
-				ns.revertToFollower()
+		case <-rn.shutdownCh:
+			rn.mutex.Lock()
+			if rn.state == Leader {
+				rn.revertToFollower()
 			}
-			ns.shutdownAskForVotesCh <- struct{}{}
-			ns.shutdownHandleVotesCh <- struct{}{}
-			ns.shutdownTimers <- struct{}{}
-			ns.closeChannels()
-			ns.mutex.Unlock()
-			log.Println("Node", ns.id, "shutdown")
+			rn.shutdownAskForVotesCh <- struct{}{}
+			rn.shutdownHandleVotesCh <- struct{}{}
+			rn.shutdownTimers <- struct{}{}
+			rn.closeChannels()
+			rn.mutex.Unlock()
+			log.Println("Node", rn.id, "shutdown")
 			return
 		}
 	}

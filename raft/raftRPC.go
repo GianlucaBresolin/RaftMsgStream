@@ -12,11 +12,11 @@ type RequestVoteResult struct {
 	VoteGranted bool
 }
 
-func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) error {
-	n.state.mutex.Lock()
-	defer n.state.mutex.Unlock()
+func (rn *RaftNode) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) error {
+	rn.mutex.Lock()
+	defer rn.mutex.Unlock()
 
-	if n.state.unvotingServer {
+	if rn.unvotingServer {
 		// discard vote request to avoid disruption from unvoting servers
 		res.Term = req.Term
 		res.VoteGranted = false
@@ -25,38 +25,38 @@ func (n *Node) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) 
 
 	// discard vote request to avoid disruption from removed servers
 	select {
-	case <-n.state.minimumTimer.C:
+	case <-rn.minimumTimer.C:
 	default:
 		// minimumTimer is not expired
-		res.Term = n.state.term
+		res.Term = rn.term
 		res.VoteGranted = false
 		return nil
 	}
 
-	if req.Term < n.state.term {
+	if req.Term < rn.term {
 		// stale term -> reject vote
-		res.Term = n.state.term
+		res.Term = rn.term
 		res.VoteGranted = false
 		return nil
 	}
 
-	if req.Term > n.state.term {
-		n.state.term = req.Term
-		n.state.revertToFollower()
+	if req.Term > rn.term {
+		rn.term = req.Term
+		rn.revertToFollower()
 	}
 
-	// req.Term == n.state.term
+	// req.Term == rn.term
 
 	// for safety check, candidate is up to date if its lastLogIndex and
 	// lastLogTerm are at least as up-to-date as the node's
-	if (n.state.log.lastTerm() <= req.LastLogTerm) && (n.state.log.lastIndex() <= req.LastLogIndex) && n.state.myVote == "" {
-		n.state.myVote = req.CandidateId
+	if (rn.log.lastTerm() <= req.LastLogTerm) && (rn.log.lastIndex() <= req.LastLogIndex) && rn.myVote == "" {
+		rn.myVote = req.CandidateId
 		res.VoteGranted = true
 	} else {
 		res.VoteGranted = false
 	}
 
-	res.Term = n.state.term
+	res.Term = rn.term
 	return nil
 }
 
@@ -74,48 +74,48 @@ type AppendEntriesResult struct {
 	Success bool
 }
 
-func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesResult) error {
-	n.state.mutex.Lock()
-	defer n.state.mutex.Unlock()
+func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesResult) error {
+	rn.mutex.Lock()
+	defer rn.mutex.Unlock()
 
-	if arg.Term < n.state.term {
-		res.Term = n.state.term
+	if arg.Term < rn.term {
+		res.Term = rn.term
 		res.Success = false
 		return nil
 	}
 
-	if arg.Term > n.state.term {
-		n.state.revertToFollower()
-		n.state.currentLeader = arg.LeaderId
-		// log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
-		n.state.term = arg.Term
+	if arg.Term > rn.term {
+		rn.revertToFollower()
+		rn.currentLeader = arg.LeaderId
+		// log.Println("Node", rn.id, "becomes follower of", arg.LeaderId)
+		rn.term = arg.Term
 
-		res.Term = n.state.term
+		res.Term = rn.term
 		res.Success = true
 		return nil
 	}
 
-	// arg.Term == n.state.term
-	if n.state.state == Candidate {
-		n.state.revertToFollower()
-		n.state.currentLeader = arg.LeaderId
-		// log.Println("Node", n.state.id, "becomes follower of", arg.LeaderId)
-	} else if n.state.currentLeader == "" {
-		n.state.currentLeader = arg.LeaderId
+	// arg.Term == rn.term
+	if rn.state == Candidate {
+		rn.revertToFollower()
+		rn.currentLeader = arg.LeaderId
+		// log.Println("Node", rn.id, "becomes follower of", arg.LeaderId)
+	} else if rn.currentLeader == "" {
+		rn.currentLeader = arg.LeaderId
 	}
 
 	// consistency check
 	exist := true
 	var previousEntry LogEntry
-	if arg.PreviousLogIndex > n.state.log.lastIndex() {
+	if arg.PreviousLogIndex > rn.log.lastIndex() {
 		// we don't have the log entry at previousLogIndex or the term doesn't match
 		exist = false
 	} else {
-		previousEntry = n.state.log.entries[arg.PreviousLogIndex]
+		previousEntry = rn.log.entries[arg.PreviousLogIndex]
 	}
 
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
-		n.state.log.entries = append(n.state.log.entries[:arg.PreviousLogIndex+1], arg.Entries...)
+		rn.log.entries = append(rn.log.entries[:arg.PreviousLogIndex+1], arg.Entries...)
 		res.Success = true
 
 		// checks for confgiuration changes
@@ -126,21 +126,21 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 			}
 		}
 		if lastConfigurationEntry.Command != nil {
-			n.state.applyConfiguration(lastConfigurationEntry.Command)
+			rn.applyConfiguration(lastConfigurationEntry.Command)
 		}
 
-		if arg.LeaderCommit > n.state.log.lastCommitedIndex {
+		if arg.LeaderCommit > rn.log.lastCommitedIndex {
 			lastCommitedIndex := arg.LeaderCommit
-			if arg.LeaderCommit > n.state.log.lastIndex() {
-				lastCommitedIndex = n.state.log.lastIndex()
+			if arg.LeaderCommit > rn.log.lastIndex() {
+				lastCommitedIndex = rn.log.lastIndex()
 			}
 
 			var lastConfigurationEntry LogEntry
-			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex : lastCommitedIndex+1] {
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedIndex+1] {
 				// update the lastUSNof for all the committed requests
 				if entry.Client != "" {
 					//avoid NO-OP entry
-					n.state.lastUSNof[entry.Client] = entry.USN
+					rn.lastUSNof[entry.Client] = entry.USN
 				}
 				// check if the committed entry was a configuration change
 				if entry.Type == 1 {
@@ -149,42 +149,49 @@ func (n *Node) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesRe
 			}
 			// apply the last committed configuration change
 			if lastConfigurationEntry.Command != nil {
-				n.state.applyCommitedConfiguration(lastConfigurationEntry.Command)
+				rn.applyCommitedConfiguration(lastConfigurationEntry.Command)
 			}
 
 			// update lastCommitedIndex
-			n.state.log.lastCommitedIndex = min(arg.LeaderCommit, n.state.log.lastIndex())
+			rn.log.lastCommitedIndex = min(arg.LeaderCommit, rn.log.lastIndex())
+
+			// apply the committed action entries to the state machine
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedIndex+1] {
+				if entry.Command != nil && entry.Type == 0 {
+					rn.commitCh <- entry.Command
+				}
+			}
 
 			// remove all our pending commit that are less than or equal to lastCommitedIndex
-			for index, replicationState := range n.state.pendingCommit {
-				if index <= n.state.log.lastCommitedIndex {
-					if replicationState.term == n.state.log.entries[index].Term {
+			for index, replicationState := range rn.pendingCommit {
+				if index <= rn.log.lastCommitedIndex {
+					if replicationState.term == rn.log.entries[index].Term {
 						// the entry was committed
 						replicationState.clientCh <- true
 					} else {
 						// the entry was not committed
 						replicationState.clientCh <- false
 					}
-					delete(n.state.pendingCommit, index)
+					delete(rn.pendingCommit, index)
 				}
 			}
 			// update lastUncommitedRequestof
-			n.state.lastUncommitedRequestof = make(map[string]int) // reset the map
-			for _, entry := range n.state.log.entries[n.state.log.lastCommitedIndex:] {
+			rn.lastUncommitedRequestof = make(map[string]int) // reset the map
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex:] {
 				if entry.Client != "" {
 					//avoid NO-OP entry
-					n.state.lastUncommitedRequestof[entry.Client] = entry.USN
+					rn.lastUncommitedRequestof[entry.Client] = entry.USN
 				}
 			}
 		}
 	} else {
-		if arg.PreviousLogIndex <= n.state.log.lastIndex() {
-			n.state.log.entries = n.state.log.entries[:arg.PreviousLogIndex] // delete all inconsistent entries after previousLogIndex
+		if arg.PreviousLogIndex <= rn.log.lastIndex() {
+			rn.log.entries = rn.log.entries[:arg.PreviousLogIndex] // delete all inconsistent entries after previousLogIndex
 		}
 		res.Success = false
 	}
 
-	res.Term = n.state.term
-	n.state.resetTimer()
+	res.Term = rn.term
+	rn.resetTimer()
 	return nil
 }

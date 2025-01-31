@@ -6,69 +6,69 @@ import (
 	"time"
 )
 
-func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Client) {
+func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Client) {
 	// replicate log entry
-	ns.mutex.Lock()
+	rn.mutex.Lock()
 
 	// build info for consistency check
-	previousLogIndex := ns.nextIndex[node] - 1
-	previousLogTerm := ns.log.entries[previousLogIndex].Term
+	previousLogIndex := rn.nextIndex[node] - 1
+	previousLogTerm := rn.log.entries[previousLogIndex].Term
 
 	// build log entries to replicate
 	var logEntriesToReplicate []LogEntry
-	if ns.log.lastIndex() >= ns.nextIndex[node] {
-		logEntriesToReplicate = ns.log.entries[ns.nextIndex[node]:]
+	if rn.log.lastIndex() >= rn.nextIndex[node] {
+		logEntriesToReplicate = rn.log.entries[rn.nextIndex[node]:]
 	}
 
 	// build arguments for AppendEntriesRPC
 	arg := AppendEntriesArguments{
-		Term:             ns.term,
-		LeaderId:         ns.id,
+		Term:             rn.term,
+		LeaderId:         rn.id,
 		PreviousLogIndex: previousLogIndex,
 		PreviousLogTerm:  previousLogTerm,
 		Entries:          logEntriesToReplicate,
-		LeaderCommit:     ns.log.lastCommitedIndex,
+		LeaderCommit:     rn.log.lastCommitedIndex,
 	}
 
-	if ns.state == Leader {
-		ns.mutex.Unlock()
+	if rn.state == Leader {
+		rn.mutex.Unlock()
 
 		failedReplicationRequest := false
 		for !failedReplicationRequest {
 			res := &AppendEntriesResult{}
 
 			err := peerConnection.Call(
-				"Node.AppendEntriesRPC",
+				"RaftNode.AppendEntriesRPC",
 				&arg,
 				res)
 
 			if err != nil {
-				log.Println("Error sending AppendEntriesRPC to", ns.id, ":", err)
+				log.Println("Error sending AppendEntriesRPC to", rn.id, ":", err)
 				log.Println("Retrying...")
 				continue
 			}
 			failedReplicationRequest = true
 
-			ns.mutex.Lock()
-			if res.Term > ns.term {
-				ns.revertToFollower()
-				ns.term = res.Term
+			rn.mutex.Lock()
+			if res.Term > rn.term {
+				rn.revertToFollower()
+				rn.term = res.Term
 			}
 
 			if res.Success {
-				previousLastCommitedIndex := ns.log.lastCommitedIndex
+				previousLastCommitedIndex := rn.log.lastCommitedIndex
 
 				for _, logEntryToReplicate := range logEntriesToReplicate {
 					// the leader checks for commit just for log entries of the leader current term that are not committed
-					repState, ok := ns.pendingCommit[logEntryToReplicate.Index]
-					_, okInOldC := ns.peers.OldConfig[node]
-					_, okInNewC := ns.peers.NewConfig[node]
+					repState, ok := rn.pendingCommit[logEntryToReplicate.Index]
+					_, okInOldC := rn.peers.OldConfig[node]
+					_, okInNewC := rn.peers.NewConfig[node]
 
-					if logEntryToReplicate.Term == ns.term && ns.state == Leader && ok {
+					if logEntryToReplicate.Term == rn.term && rn.state == Leader && ok {
 						// update the replication state
 						// joint-consensus: checks also for the old configuraiton
 						if !repState.committedOldC && okInOldC {
-							if repState.replicationCounterOldC+1 > uint(len(ns.peers.OldConfig)/2) {
+							if repState.replicationCounterOldC+1 > uint(len(rn.peers.OldConfig)/2) {
 								repState.committedOldC = true
 							} else {
 								repState.replicationCounterOldC++
@@ -77,7 +77,7 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 
 						// normal consensus: checks only for the new configuration
 						if !repState.committedNewC && okInNewC {
-							if repState.replicationCounterNewC+1 > uint(len(ns.peers.NewConfig)/2) {
+							if repState.replicationCounterNewC+1 > uint(len(rn.peers.NewConfig)/2) {
 								repState.committedNewC = true
 							} else {
 								repState.replicationCounterNewC++
@@ -85,71 +85,79 @@ func (ns *nodeState) handleReplicationLog(node ServerID, peerConnection *rpc.Cli
 						}
 
 						if repState.committedOldC && repState.committedNewC {
-							ns.log.lastCommitedIndex = logEntryToReplicate.Index
+							rn.log.lastCommitedIndex = logEntryToReplicate.Index
 							repState.clientCh <- true
 							log.Println("committed log entry in position", logEntryToReplicate.Index)
-							delete(ns.pendingCommit, logEntryToReplicate.Index) // remove the entry from the pending commit
+							delete(rn.pendingCommit, logEntryToReplicate.Index) // remove the entry from the pending commit
 						} else {
-							ns.pendingCommit[logEntryToReplicate.Index] = repState // update the replication state
+							rn.pendingCommit[logEntryToReplicate.Index] = repState // update the replication state
 						}
 					}
-					ns.nextIndex[node] = logEntryToReplicate.Index + 1
+					rn.nextIndex[node] = logEntryToReplicate.Index + 1
 				}
 
-				// if we update the lastCommitedIndex, we have also to update ns.lastUSNof and ns.pendingRequestof
-				for _, entry := range ns.log.entries[previousLastCommitedIndex : ns.log.lastCommitedIndex+1] {
-					if entry.Client != "" && entry.USN > ns.lastUSNof[entry.Client] {
-						ns.lastUSNof[entry.Client] = entry.USN
+				if previousLastCommitedIndex != rn.log.lastCommitedIndex {
+					for _, entry := range rn.log.entries[previousLastCommitedIndex : rn.log.lastCommitedIndex+1] {
+						// if we update the lastCommitedIndex, we have to apply to the state all the committed action entries
+						if entry.Type == ActionEntry && entry.Command != nil {
+							rn.commitCh <- entry.Command
+						}
 
-						if ns.lastUncommitedRequestof[entry.Client] == entry.USN {
-							// remove last request only if it is the same USN
-							delete(ns.lastUncommitedRequestof, entry.Client)
+						// if we update the lastCommitedIndex, we have also to update rn.lastUSNof and rn.pendingRequestof
+						if entry.Client != "" && entry.USN > rn.lastUSNof[entry.Client] {
+							rn.lastUSNof[entry.Client] = entry.USN
+
+							if rn.lastUncommitedRequestof[entry.Client] == entry.USN {
+								// remove last request only if it is the same USN
+								delete(rn.lastUncommitedRequestof, entry.Client)
+							}
 						}
 					}
 				}
-				ns.mutex.Unlock()
+
+				rn.mutex.Unlock()
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
-				ns.nextIndex[node]--
-				ns.mutex.Unlock()
-				ns.handleReplicationLog(node, peerConnection)
+				rn.nextIndex[node]--
+				rn.mutex.Unlock()
+				rn.handleReplicationLog(node, peerConnection)
 			}
 		}
 	}
 }
 
-func (ns *nodeState) handleLeadership() {
+func (rn *RaftNode) handleLeadership() {
 	ticker := time.NewTicker(LeaderTimeout * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case stopLeadership := <-ns.leaderCh:
+		case stopLeadership := <-rn.leaderCh:
 			if stopLeadership {
-				log.Println("Node", ns.id, "lost leadership")
+				log.Println("Node", rn.id, "lost leadership")
 				return
 			}
-		case <-ns.logEntriesCh:
-			ns.mutex.Lock()
-			for node, peerConnection := range ns.peersConnection {
-				go ns.handleReplicationLog(node, peerConnection)
+		case <-rn.logEntriesCh:
+			rn.mutex.Lock()
+			for node, peerConnection := range rn.peersConnection {
+				go rn.handleReplicationLog(node, peerConnection)
 			}
-			ns.mutex.Unlock()
-		case <-ns.firstHeartbeatCh:
-			ns.mutex.Lock()
+			rn.mutex.Unlock()
+		case <-rn.firstHeartbeatCh:
+			rn.mutex.Lock()
 			// the first heartbeat is sent immediately
-			for node, peerConnection := range ns.peersConnection {
-				go ns.handleReplicationLog(node, peerConnection)
+			for node, peerConnection := range rn.peersConnection {
+				go rn.handleReplicationLog(node, peerConnection)
 			}
-			ns.mutex.Unlock()
+			rn.mutex.Unlock()
 		case <-ticker.C:
 			// heartbeat
-			ns.mutex.Lock()
-			for node, peerConnection := range ns.peersConnection {
-				go ns.handleReplicationLog(node, peerConnection)
+			rn.mutex.Lock()
+			for node, peerConnection := range rn.peersConnection {
+				go rn.handleReplicationLog(node, peerConnection)
 			}
-			ns.mutex.Unlock()
+			rn.mutex.Unlock()
 		}
 	}
 }

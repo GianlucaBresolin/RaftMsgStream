@@ -5,57 +5,57 @@ import (
 	"time"
 )
 
-func (ns *nodeState) startElection() {
-	ns.state = Candidate
-	ns.electionVotesNewC = 0
-	ns.electionVotesOldC = 0
-	ns.term++
-	ns.myVote = ns.id
-	ns.voteResponseCh <- RequestVoteResultWithServerID{ns.id, RequestVoteResult{ns.term, true}}
-	ns.voteRequestCh <- RequestVoteArguments{ns.term, ns.id, ns.log.lastIndex(), ns.log.lastTerm()}
-	log.Println("Starting election for term", ns.term)
+func (rn *RaftNode) startElection() {
+	rn.state = Candidate
+	rn.electionVotesNewC = 0
+	rn.electionVotesOldC = 0
+	rn.term++
+	rn.myVote = rn.id
+	rn.voteResponseCh <- RequestVoteResultWithServerID{rn.id, RequestVoteResult{rn.term, true}}
+	rn.voteRequestCh <- RequestVoteArguments{rn.term, rn.id, rn.log.lastIndex(), rn.log.lastTerm()}
+	log.Println("Starting election for term", rn.term)
 }
 
-func (ns *nodeState) winElection() {
-	if !ns.electionTimer.Stop() {
+func (rn *RaftNode) winElection() {
+	if !rn.electionTimer.Stop() {
 		select {
-		case <-ns.electionTimer.C: // try to drain from the channel
+		case <-rn.electionTimer.C: // try to drain from the channel
 		default:
 		}
 	}
-	ns.state = Leader
-	ns.currentLeader = ns.id
-	ns.nextIndex = make(map[ServerID]uint)
+	rn.state = Leader
+	rn.currentLeader = rn.id
+	rn.nextIndex = make(map[ServerID]uint)
 
 	// initialize nextIndex for all peers (voting and unvoting nodes)
-	for peer := range ns.peers.OldConfig {
-		if peer != ns.id {
-			ns.nextIndex[peer] = ns.log.lastIndex() + 1
+	for peer := range rn.peers.OldConfig {
+		if peer != rn.id {
+			rn.nextIndex[peer] = rn.log.lastIndex() + 1
 		}
 	}
-	for peer := range ns.peers.NewConfig {
-		if peer != ns.id {
-			ns.nextIndex[peer] = ns.log.lastIndex() + 1
+	for peer := range rn.peers.NewConfig {
+		if peer != rn.id {
+			rn.nextIndex[peer] = rn.log.lastIndex() + 1
 		}
 	}
-	for peer := range ns.unvotingServers {
-		ns.nextIndex[peer] = ns.log.lastIndex() + 1
+	for peer := range rn.unvotingServers {
+		rn.nextIndex[peer] = rn.log.lastIndex() + 1
 	}
 
-	go ns.handleLeadership()
-	ns.firstHeartbeatCh <- struct{}{}
-	log.Println("Node", ns.id, "won the election for term", ns.term)
+	go rn.handleLeadership()
+	rn.firstHeartbeatCh <- struct{}{}
+	log.Println("Node", rn.id, "won the election for term", rn.term)
 }
 
-func (ns *nodeState) revertToFollower() {
-	if ns.state == Leader {
-		ns.leaderCh <- true // stop handling leadership
-		ns.nextIndex = nil
+func (rn *RaftNode) revertToFollower() {
+	if rn.state == Leader {
+		rn.leaderCh <- true // stop handling leadership
+		rn.nextIndex = nil
 	}
-	ns.state = Follower
-	ns.currentLeader = ""
-	ns.myVote = ""
-	ns.resetTimer()
+	rn.state = Follower
+	rn.currentLeader = ""
+	rn.myVote = ""
+	rn.resetTimer()
 }
 
 type RequestVoteResultWithServerID struct {
@@ -63,36 +63,36 @@ type RequestVoteResultWithServerID struct {
 	result   RequestVoteResult
 }
 
-func (ns *nodeState) askForVotes() {
+func (rn *RaftNode) askForVotes() {
 	for {
 		select {
-		case requestVoteArguments := <-ns.voteRequestCh:
+		case requestVoteArguments := <-rn.voteRequestCh:
 			// we need to ask for votes
-			for peer, peerConnection := range ns.peersConnection {
-				//log.Println("Asking for votes", ns.id, "for term", ns.term)
+			for peer, peerConnection := range rn.peersConnection {
+				//log.Println("Asking for votes", rn.id, "for term", rn.term)
 				go func() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false
 					for !stopAskingVote {
 						err := peerConnection.Call(
-							"Node.RequestVoteRPC",
+							"RaftNode.RequestVoteRPC",
 							requestVoteArguments,
 							voteResponse)
 
 						if err != nil {
-							log.Println("Error sending RequestVoteRPC to", ns.id, ":", err)
+							log.Println("Error sending RequestVoteRPC to", rn.id, ":", err)
 						} else {
 							voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
-							ns.voteResponseCh <- voteResponseWithServerID
+							rn.voteResponseCh <- voteResponseWithServerID
 							stopAskingVote = true
 						}
 
-						ns.mutex.Lock()
-						if (ns.term > requestVoteArguments.Term || ns.currentLeader != "") && ns.state == Candidate {
+						rn.mutex.Lock()
+						if (rn.term > requestVoteArguments.Term || rn.currentLeader != "") && rn.state == Candidate {
 							// stale term or we becomes leader -> stop asking to that node for a vote
 							stopAskingVote = true
 						}
-						ns.mutex.Unlock()
+						rn.mutex.Unlock()
 
 						if !stopAskingVote {
 							time.Sleep(CandidateTimeout * time.Millisecond) // avoid flooding the nodes
@@ -100,48 +100,48 @@ func (ns *nodeState) askForVotes() {
 					}
 				}()
 			}
-		case <-ns.shutdownAskForVotesCh:
+		case <-rn.shutdownAskForVotesCh:
 			return
 		}
 	}
 }
 
-func (ns *nodeState) handleVotes() {
+func (rn *RaftNode) handleVotes() {
 	for {
 		select {
-		case resp := <-ns.voteResponseCh:
-			ns.mutex.Lock()
-			if resp.result.Term > ns.term {
-				ns.term = resp.result.Term
-				ns.revertToFollower()
+		case resp := <-rn.voteResponseCh:
+			rn.mutex.Lock()
+			if resp.result.Term > rn.term {
+				rn.term = resp.result.Term
+				rn.revertToFollower()
 			}
 
 			okOldC := false
-			if ns.peers.OldConfig != nil { // we are in a configuration change
-				_, okOldC = ns.peers.OldConfig[resp.serverID]
+			if rn.peers.OldConfig != nil { // we are in a configuration change
+				_, okOldC = rn.peers.OldConfig[resp.serverID]
 			}
-			_, okNewC := ns.peers.NewConfig[resp.serverID]
+			_, okNewC := rn.peers.NewConfig[resp.serverID]
 
-			if resp.result.Term == ns.term && resp.result.VoteGranted {
+			if resp.result.Term == rn.term && resp.result.VoteGranted {
 				if okOldC {
-					ns.electionVotesOldC++
+					rn.electionVotesOldC++
 				}
 				if okNewC {
-					ns.electionVotesNewC++
+					rn.electionVotesNewC++
 				}
 
 				oldMajority := 0
-				if ns.peers.OldConfig != nil {
-					oldMajority = int(len(ns.peers.OldConfig)/2) + 1
+				if rn.peers.OldConfig != nil {
+					oldMajority = int(len(rn.peers.OldConfig)/2) + 1
 				}
-				newMajority := int(len(ns.peers.NewConfig)/2) + 1
+				newMajority := int(len(rn.peers.NewConfig)/2) + 1
 
-				if ns.electionVotesOldC >= oldMajority && ns.electionVotesNewC >= newMajority && ns.currentLeader == "" {
-					ns.winElection()
+				if rn.electionVotesOldC >= oldMajority && rn.electionVotesNewC >= newMajority && rn.currentLeader == "" {
+					rn.winElection()
 				}
 			}
-			ns.mutex.Unlock()
-		case <-ns.shutdownHandleVotesCh:
+			rn.mutex.Unlock()
+		case <-rn.shutdownHandleVotesCh:
 			return
 		}
 	}
