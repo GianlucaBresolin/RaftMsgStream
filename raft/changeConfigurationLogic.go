@@ -44,7 +44,7 @@ func (rn *RaftNode) prepareCold_new(command []byte) []byte {
 				rn.peersConnection[peer] = client
 
 				// update the nextIndex
-				rn.nextIndex[peer] = rn.log.lastIndex() + 1
+				rn.nextIndex[peer] = rn.lastGlobalIndex() + 1
 			}
 		}
 	}
@@ -61,7 +61,7 @@ func (rn *RaftNode) prepareCnew() {
 	}
 
 	// notify other nodes by appending Cnew to the log
-	index := rn.log.lastIndex() + 1
+	index := rn.lastGlobalIndex() + 1
 	command, _ := json.Marshal(newConfiguration)
 	rn.USN++
 

@@ -13,7 +13,7 @@ func (rn *RaftNode) startElection() {
 	rn.term++
 	rn.myVote = rn.id
 	rn.voteResponseCh <- RequestVoteResultWithServerID{rn.id, RequestVoteResult{rn.term, true}}
-	rn.voteRequestCh <- RequestVoteArguments{rn.term, rn.id, rn.log.lastIndex(), rn.log.lastTerm()}
+	rn.voteRequestCh <- RequestVoteArguments{rn.term, rn.id, rn.lastGlobalIndex(), rn.log.lastTerm()}
 	log.Println("Starting election for term", rn.term)
 }
 
@@ -31,16 +31,16 @@ func (rn *RaftNode) winElection() {
 	// initialize nextIndex for all peers (voting and unvoting nodes)
 	for peer := range rn.peers.OldConfig {
 		if peer != rn.id {
-			rn.nextIndex[peer] = rn.log.lastIndex() + 1
+			rn.nextIndex[peer] = rn.lastGlobalIndex() + 1
 		}
 	}
 	for peer := range rn.peers.NewConfig {
 		if peer != rn.id {
-			rn.nextIndex[peer] = rn.log.lastIndex() + 1
+			rn.nextIndex[peer] = rn.lastGlobalIndex() + 1
 		}
 	}
 	for peer := range rn.unvotingServers {
-		rn.nextIndex[peer] = rn.log.lastIndex() + 1
+		rn.nextIndex[peer] = rn.lastGlobalIndex() + 1
 	}
 
 	// checks if we need to finish the configuration change
@@ -63,7 +63,7 @@ func (rn *RaftNode) winElection() {
 			}
 
 			// notify other nodes by appending Cnew to the log
-			index := rn.log.lastIndex() + 1
+			index := rn.lastGlobalIndex() + 1
 			command, _ := json.Marshal(newConfiguration)
 			rn.USN++
 

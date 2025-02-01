@@ -2,9 +2,16 @@ package server
 
 import (
 	"RaftMsgStream/models"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"log"
 	"net/rpc"
+
+	"RaftMsgStream/server/protoServer"
+
+	"google.golang.org/protobuf/proto"
 )
 
 type command struct {
@@ -21,25 +28,20 @@ type group struct {
 }
 
 type msgStreamStateMachine struct {
-	serverId  string
-	commandCh chan []byte
-	groups    map[string]*group
+	serverId           string
+	commandCh          chan []byte
+	snapshotRequestCh  chan struct{}
+	snapshotResponseCh chan []byte
+	groups             map[string]*group
 }
 
 func newMsgStreamStateMachine(serverId string) *msgStreamStateMachine {
 	return &msgStreamStateMachine{
-		serverId:  serverId,
-		commandCh: make(chan []byte),
-		groups:    make(map[string]*group),
-	}
-}
-
-func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
-	for {
-		select {
-		case command := <-m.commandCh:
-			m.applyCommand(command)
-		}
+		serverId:           serverId,
+		commandCh:          make(chan []byte),
+		snapshotRequestCh:  make(chan struct{}),
+		snapshotResponseCh: make(chan []byte),
+		groups:             make(map[string]*group),
 	}
 }
 
@@ -82,24 +84,110 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		}
 
 		// notify all the users in the group
-		for _, user := range m.groups[command.Group].users {
-			success := false
-			for !success {
-				updateResult := &models.UpdateResult{}
-				err := user.Call("Client.UpdateRPC",
-					models.UpdateARgs{
-						Server: m.serverId,
-						Group:  command.Group,
-					}, updateResult)
-				if err != nil {
-					log.Printf("Failed to call Update: %v", err)
-				}
-				log.Println(updateResult)
-				success = updateResult.Success
-			}
-		}
+		// for _, user := range m.groups[command.Group].users {
+		// 	success := false
+		// 	for !success {
+		// 		updateResult := &models.UpdateResult{}
+		// 		err := user.Call("Client.UpdateRPC",
+		// 			models.UpdateARgs{
+		// 				Server: m.serverId,
+		// 				Group:  command.Group,
+		// 			}, updateResult)
+		// 		if err != nil {
+		// 			log.Printf("Failed to call Update: %v", err)
+		// 		}
+		// 		log.Println(updateResult)
+		// 		success = updateResult.Success
+		// 	}
+		// }
 	case "false":
 		// remove the user from the group
 		delete(m.groups[command.Group].users, command.Username)
+	}
+}
+
+func gzipCompress(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gzWriter := gzip.NewWriter(&buf)
+
+	// write the data to the writer
+	_, err := gzWriter.Write(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// close the writer
+	err = gzWriter.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func gzipDecompress(compressedData []byte) ([]byte, error) {
+	buf := bytes.NewReader(compressedData)
+	gzReader, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, err
+	}
+	defer gzReader.Close()
+
+	// Legge tutti i dati decompressi
+	decompressedData, err := io.ReadAll(gzReader)
+	if err != nil {
+		return nil, err
+	}
+
+	return decompressedData, nil
+}
+
+func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
+	for {
+		select {
+		case command := <-m.commandCh:
+			m.applyCommand(command)
+		case <-m.snapshotRequestCh:
+			// create the snapshot
+			// generate the proto object of the state
+			groups := &protoServer.MsgStreamStateMachine{
+				Groups: make([]*protoServer.Group, 0),
+			}
+
+			for groupName, group := range m.groups {
+				groupProto := &protoServer.Group{
+					GroupName: groupName,
+					Users:     make([]string, 0),
+					Messages:  make([]*protoServer.Message, 0),
+				}
+
+				for username, _ := range group.users {
+					groupProto.Users = append(groupProto.Users, username)
+				}
+
+				for _, message := range group.messages {
+					groupProto.Messages = append(groupProto.Messages, &protoServer.Message{
+						Username: message.Username,
+						Msg:      message.Msg,
+					})
+				}
+
+				groups.Groups = append(groups.Groups, groupProto)
+			}
+			data, err := proto.Marshal(groups)
+			if err != nil {
+				log.Printf("Error marshalling snapshot %v", err)
+				m.snapshotResponseCh <- nil
+				continue
+			}
+
+			compressedSnapshot, err := gzipCompress(data)
+			if err != nil {
+				log.Printf("Error compressing snapshot %v", err)
+				m.snapshotResponseCh <- nil
+				continue
+			}
+			m.snapshotResponseCh <- compressedSnapshot
+		}
 	}
 }

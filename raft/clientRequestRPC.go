@@ -55,7 +55,7 @@ func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequ
 			}
 
 			logEntry := LogEntry{
-				Index:   rn.log.lastIndex() + 1,
+				Index:   rn.lastGlobalIndex() + 1,
 				Term:    rn.term,
 				Command: command,
 				Type:    req.Type,

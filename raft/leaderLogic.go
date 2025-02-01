@@ -13,12 +13,12 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 
 	// build info for consistency check
 	previousLogIndex := rn.nextIndex[node] - 1
-	previousLogTerm := rn.log.entries[previousLogIndex].Term
+	previousLogTerm := rn.log.entries[previousLogIndex-rn.snapshot.LastIndex].Term
 
 	// build log entries to replicate
 	var logEntriesToReplicate []LogEntry
-	if rn.log.lastIndex() >= rn.nextIndex[node] {
-		logEntriesToReplicate = rn.log.entries[rn.nextIndex[node]:]
+	if rn.lastGlobalIndex() >= rn.nextIndex[node] {
+		logEntriesToReplicate = rn.log.entries[rn.nextIndex[node]-rn.snapshot.LastIndex:]
 	}
 
 	// build arguments for AppendEntriesRPC
@@ -28,7 +28,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 		PreviousLogIndex: previousLogIndex,
 		PreviousLogTerm:  previousLogTerm,
 		Entries:          logEntriesToReplicate,
-		LeaderCommit:     rn.log.lastCommitedIndex,
+		LeaderCommit:     rn.lastGlobalCommitedIndex(),
 	}
 
 	if rn.state == Leader {
@@ -59,6 +59,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			if res.Success {
 				previousLastCommitedIndex := rn.log.lastCommitedIndex
 
+				triggerSnapshot := false
 				for _, logEntryToReplicate := range logEntriesToReplicate {
 					// the leader checks for commit just for log entries of the leader current term that are not committed
 					repState, ok := rn.pendingCommit[logEntryToReplicate.Index]
@@ -86,17 +87,25 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 						}
 
 						if repState.committedOldC && repState.committedNewC {
-							rn.log.lastCommitedIndex = logEntryToReplicate.Index
+							// update the last commited index
+							rn.log.lastCommitedIndex = logEntryToReplicate.Index - rn.snapshot.LastIndex
 							repState.clientCh <- true
 							log.Println("committed log entry in position", logEntryToReplicate.Index)
 							delete(rn.pendingCommit, logEntryToReplicate.Index) // remove the entry from the pending commit
+
+							// check if we have to take a snapshot
+							if (rn.log.lastCommitedIndex) >= snapshotThreshold {
+								triggerSnapshot = true
+							}
 						} else {
 							rn.pendingCommit[logEntryToReplicate.Index] = repState // update the replication state
 						}
 					}
 					rn.nextIndex[node] = logEntryToReplicate.Index + 1
 				}
-
+				if triggerSnapshot {
+					rn.takeSnapshotCh <- struct{}{} // trigger the snapshot process
+				}
 				if previousLastCommitedIndex < rn.log.lastCommitedIndex {
 					for _, entry := range rn.log.entries[previousLastCommitedIndex : rn.log.lastCommitedIndex+1] {
 						// if we update the lastCommitedIndex, we have to apply to the state all the committed action entries
@@ -145,7 +154,11 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
-				rn.nextIndex[node]--
+				if rn.nextIndex[node] == 0 {
+					// TODO: send to the follower a snapshot
+				} else {
+					rn.nextIndex[node]--
+				}
 				rn.mutex.Unlock()
 				rn.handleReplicationLog(node, peerConnection)
 			}

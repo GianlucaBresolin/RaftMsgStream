@@ -49,7 +49,7 @@ func (rn *RaftNode) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteRes
 
 	// for safety check, candidate is up to date if its lastLogIndex and
 	// lastLogTerm are at least as up-to-date as the node's
-	if (rn.log.lastTerm() <= req.LastLogTerm) && (rn.log.lastIndex() <= req.LastLogIndex) && rn.myVote == "" {
+	if (rn.log.lastTerm() <= req.LastLogTerm) && (rn.lastGlobalIndex() <= req.LastLogIndex) && rn.myVote == "" {
 		rn.myVote = req.CandidateId
 		res.VoteGranted = true
 	} else {
@@ -107,15 +107,15 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 	// consistency check
 	exist := true
 	var previousEntry LogEntry
-	if arg.PreviousLogIndex > rn.log.lastIndex() {
-		// we don't have the log entry at previousLogIndex or the term doesn't match
+	if arg.PreviousLogIndex > rn.lastGlobalIndex() {
+		// we don't have the log entry at previousLogIndex
 		exist = false
 	} else {
-		previousEntry = rn.log.entries[arg.PreviousLogIndex]
+		previousEntry = rn.log.entries[arg.PreviousLogIndex-rn.snapshot.LastIndex]
 	}
 
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
-		rn.log.entries = append(rn.log.entries[:arg.PreviousLogIndex+1], arg.Entries...)
+		rn.log.entries = append(rn.log.entries[:arg.PreviousLogIndex+1-rn.snapshot.LastIndex], arg.Entries...)
 		res.Success = true
 
 		// checks for confgiuration changes
@@ -129,14 +129,14 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 			rn.applyConfiguration(lastConfigurationEntry.Command)
 		}
 
-		if arg.LeaderCommit > rn.log.lastCommitedIndex {
-			lastCommitedIndex := arg.LeaderCommit
-			if arg.LeaderCommit > rn.log.lastIndex() {
-				lastCommitedIndex = rn.log.lastIndex()
+		if arg.LeaderCommit > rn.lastGlobalCommitedIndex() {
+			lastCommitedGlobalIndex := arg.LeaderCommit
+			if arg.LeaderCommit > rn.lastGlobalIndex() {
+				lastCommitedGlobalIndex = rn.lastGlobalIndex()
 			}
 
 			var lastConfigurationEntry LogEntry
-			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedIndex+1] {
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedGlobalIndex+1-rn.snapshot.LastIndex] {
 				// update the lastUSNof for all the committed requests
 				if entry.Client != "" {
 					//avoid NO-OP entry
@@ -152,19 +152,23 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 				rn.applyCommitedConfiguration(lastConfigurationEntry.Command)
 			}
 
-			// update lastCommitedIndex
-			rn.log.lastCommitedIndex = min(arg.LeaderCommit, rn.log.lastIndex())
-
 			// apply the committed action entries to the state machine
-			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedIndex+1] {
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedGlobalIndex+1-rn.snapshot.LastIndex] {
 				if entry.Command != nil && entry.Type == 0 {
 					rn.commitCh <- entry.Command
 				}
 			}
 
-			// remove all our pending commit that are less than or equal to lastCommitedIndex
+			// update lastCommitedIndex
+			rn.log.lastCommitedIndex = lastCommitedGlobalIndex - rn.snapshot.LastIndex
+			// check if we have to trigger a snapshot
+			if rn.log.lastCommitedIndex >= snapshotThreshold {
+				rn.takeSnapshotCh <- struct{}{}
+			}
+
+			// remove all our pending commit that are less than or equal to the lastGlobalCommitedIndex
 			for index, replicationState := range rn.pendingCommit {
-				if index <= rn.log.lastCommitedIndex {
+				if index <= rn.lastGlobalCommitedIndex() {
 					if replicationState.term == rn.log.entries[index].Term {
 						// the entry was committed
 						replicationState.clientCh <- true
@@ -185,7 +189,7 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 			}
 		}
 	} else {
-		if arg.PreviousLogIndex <= rn.log.lastIndex() {
+		if arg.PreviousLogIndex <= rn.lastGlobalIndex() {
 			rn.log.entries = rn.log.entries[:arg.PreviousLogIndex] // delete all inconsistent entries after previousLogIndex
 		}
 		res.Success = false

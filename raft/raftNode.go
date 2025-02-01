@@ -20,17 +20,14 @@ const CandidateTimeout = 10
 
 const LeaderTimeout = 20
 
+const snapshotThreshold = 5
+
 type ServerID string
 type Port string
 
 type Configuration struct {
 	OldConfig map[ServerID]Port
 	NewConfig map[ServerID]Port
-}
-
-type unvotingServer struct {
-	port          Port
-	acknogwledges bool
 }
 
 type RaftNode struct {
@@ -66,14 +63,19 @@ type RaftNode struct {
 	lastUncommitedRequestof map[string]int
 	// state machine logic
 	commitCh chan []byte
+	// snapshot logic
+	takeSnapshotCh     chan struct{}
+	snapshotRequestCh  chan struct{}
+	snapshotResponseCh chan []byte
+	snapshot           *Snapshot
 	// unvoting logic
 	unvotingServer  bool
-	unvotingServers map[ServerID]unvotingServer
+	unvotingServers map[ServerID]string
 	// mutex
 	mutex sync.Mutex
 }
 
-func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan []byte, unvoting bool) *RaftNode {
+func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponseCh chan []byte, unvoting bool) *RaftNode {
 	peers[id] = "" // add self to the peers list
 	raftNode := &RaftNode{
 		id:                    id,
@@ -110,8 +112,17 @@ func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan
 		lastUSNof:               make(map[string]int),
 		lastUncommitedRequestof: make(map[string]int),
 		commitCh:                commandCh,
-		unvotingServer:          unvoting,
-		unvotingServers:         make(map[ServerID]unvotingServer),
+		takeSnapshotCh:          make(chan struct{}),
+		snapshotRequestCh:       snapshotRequestCh,
+		snapshotResponseCh:      snapshotResponseCh,
+		snapshot: &Snapshot{
+			LastIndex:        0,
+			LastTerm:         0,
+			LastConfig:       Configuration{OldConfig: nil, NewConfig: nil},
+			StateMachineSnap: nil,
+		},
+		unvotingServer:  unvoting,
+		unvotingServers: make(map[ServerID]string),
 	}
 	raftNode.registerNode()
 	return raftNode
@@ -126,6 +137,8 @@ func (rn *RaftNode) closeChannels() {
 	close(rn.voteRequestCh)
 	close(rn.firstHeartbeatCh)
 	close(rn.leaderCh)
+	close(rn.takeSnapshotCh)
+	close(rn.logEntriesCh)
 }
 
 func (rn *RaftNode) handleUnvotingNode() {
@@ -143,9 +156,10 @@ func (rn *RaftNode) HandleRaftNode() {
 	}
 
 	go rn.handleTimer()
-
 	go rn.askForVotes()
 	go rn.handleVotes()
+
+	go rn.handleSnapshot()
 
 	for {
 		select {

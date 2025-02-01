@@ -36,13 +36,10 @@ func (rn *RaftNode) AddUnvotingServerRPC(req AddUnvotingServerArguments, res *Ad
 	rn.peersConnection[req.ServerID] = client
 
 	// add the server to the unvoting servers
-	rn.unvotingServers[req.ServerID] = unvotingServer{
-		port:          req.Port,
-		acknogwledges: false,
-	}
+	rn.unvotingServers[req.ServerID] = string(req.Port)
 
 	// update its nextIndex
-	rn.nextIndex[req.ServerID] = rn.log.lastIndex() + 1
+	rn.nextIndex[req.ServerID] = rn.lastGlobalIndex() + 1
 
 	res.Success = true
 	res.CurrentLeader = rn.currentLeader

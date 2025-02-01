@@ -1,0 +1,21 @@
+syntax = "proto3"; 
+
+package protoServer;
+
+option go_package = "./protoServer;protoServer";
+
+message Message {
+  string username = 1;
+  string msg = 2;
+}
+
+message Group {
+  string groupName = 1;
+  repeated string users = 2;
+  repeated Message messages = 3;
+}
+
+message MsgStreamStateMachine {
+  repeated Group groups = 1;
+}
+
