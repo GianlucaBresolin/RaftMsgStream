@@ -13,7 +13,7 @@ func NewServer(id raft.ServerID, port raft.Port, peers map[raft.ServerID]raft.Po
 	raftNode := raft.NewRaftNode(id, port, peers, unvoting)
 	return &Server{
 		raftNode:     raftNode,
-		stateMachine: newMsgStreamStateMachine(string(id), raftNode.CommitCh, raftNode.SnapshotRequestCh, raftNode.SnapshotResponseCh, raftNode.ApplySnapshotCh),
+		stateMachine: newMsgStreamStateMachine(string(id), raftNode.CommitCh, raftNode.SnapshotRequestCh, raftNode.SnapshotResponseCh, raftNode.ApplySnapshotCh, raftNode.ReadStateCh, raftNode.ReadStateResultCh),
 	}
 }
 

@@ -9,13 +9,14 @@ import (
 )
 
 type Client struct {
-	Id          string
-	Port        string
-	USN         int
-	Servers     map[string]string
-	Connections map[string]*rpc.Client
-	groups      map[string][]models.Message
-	mutex       sync.Mutex
+	Id            string
+	Port          string
+	USN           int
+	LastRequestID int
+	Servers       map[string]string
+	Connections   map[string]*rpc.Client
+	groups        map[string][]models.Message
+	mutex         sync.Mutex
 }
 
 func (c *Client) RegisterClient() {
@@ -45,12 +46,14 @@ func (c *Client) RegisterClient() {
 
 func NewClient(id string, port string, servers map[string]string) *Client {
 	client := &Client{
-		Id:          id,
-		Port:        port,
-		USN:         0,
-		Servers:     servers,
-		Connections: make(map[string]*rpc.Client),
-		groups:      make(map[string][]models.Message),
+		Id:            id,
+		Port:          port,
+		USN:           0,
+		LastRequestID: -1,
+		Servers:       servers,
+		Connections:   make(map[string]*rpc.Client),
+		groups:        make(map[string][]models.Message),
+		mutex:         sync.Mutex{},
 	}
 	client.RegisterClient()
 	return client

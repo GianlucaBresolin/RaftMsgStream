@@ -90,7 +90,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 							// update the last commited index
 							rn.log.lastCommitedIndex = logEntryToReplicate.Index - rn.snapshot.LastIndex
 							repState.clientCh <- true
-							log.Println("committed log entry in position", logEntryToReplicate.Index)
+							log.Println("commited log entry in position", logEntryToReplicate.Index)
 							delete(rn.pendingCommit, logEntryToReplicate.Index) // remove the entry from the pending commit
 
 							// check if we have to take a snapshot
@@ -107,7 +107,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 					rn.takeSnapshotCh <- struct{}{} // trigger the snapshot process
 				}
 				if previousLastCommitedIndex < rn.log.lastCommitedIndex {
-					for _, entry := range rn.log.entries[previousLastCommitedIndex : rn.log.lastCommitedIndex+1] {
+					for _, entry := range rn.log.entries[previousLastCommitedIndex+1 : rn.log.lastCommitedIndex+1] {
 						// if we update the lastCommitedIndex, we have to apply to the state all the committed action entries
 						if entry.Type == ActionEntry && entry.Command != nil {
 							rn.CommitCh <- entry.Command
@@ -125,7 +125,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 								rn.prepareCnew()
 							} else {
 								// we committed Cnew, we have to update the configuration (we have to wait in order to let
-								//the other nodes to know that this configuration is commited)
+								// the other nodes to know that this configuration is commited)
 								time.AfterFunc(1*time.Second, func() {
 									rn.mutex.Lock()
 									rn.peers = Configuration{
@@ -138,7 +138,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 							}
 						}
 
-						// if we update the lastCommitedIndex, we have also to update rn.lastUSNof and rn.pendingRequestof
+						// if we update the lastCommitedIndex, we have also to update rn.lastUSNof
 						if entry.Client != "" && entry.USN > rn.lastUSNof[entry.Client] {
 							rn.lastUSNof[entry.Client] = entry.USN
 						}

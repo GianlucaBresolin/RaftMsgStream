@@ -1,6 +1,7 @@
 package server
 
 import (
+	"RaftMsgStream/client"
 	"RaftMsgStream/models"
 	"bytes"
 	"compress/gzip"
@@ -34,20 +35,26 @@ type group struct {
 
 type msgStreamStateMachine struct {
 	serverId           string
+	requestID          int
 	commandCh          chan []byte
+	readStateCh        chan []byte
+	readStateResultCh  chan []byte
 	snapshotRequestCh  chan struct{}
 	snapshotResponseCh chan []byte
 	applySnapshotCh    chan []byte
 	groups             map[string]*group
 }
 
-func newMsgStreamStateMachine(serverId string, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponde chan []byte, applySnapshotCh chan []byte) *msgStreamStateMachine {
+func newMsgStreamStateMachine(serverId string, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponseCh chan []byte, applySnapshotCh chan []byte, readStateCh chan []byte, readStateResultCh chan []byte) *msgStreamStateMachine {
 	return &msgStreamStateMachine{
 		serverId:           serverId,
+		requestID:          0,
 		commandCh:          commandCh,
 		applySnapshotCh:    applySnapshotCh,
 		snapshotRequestCh:  snapshotRequestCh,
-		snapshotResponseCh: snapshotResponde,
+		snapshotResponseCh: snapshotResponseCh,
+		readStateCh:        readStateCh,
+		readStateResultCh:  readStateResultCh,
 		groups:             make(map[string]*group),
 	}
 }
@@ -94,22 +101,23 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		}
 
 		// notify all the users in the group
-		// for _, user := range m.groups[command.Group].users {
-		// 	success := false
-		// 	for !success {
-		// 		updateResult := &models.UpdateResult{}
-		// 		err := user.Call("Client.UpdateRPC",
-		// 			models.UpdateARgs{
-		// 				Server: m.serverId,
-		// 				Group:  command.Group,
-		// 			}, updateResult)
-		// 		if err != nil {
-		// 			log.Printf("Failed to call Update: %v", err)
-		// 		}
-		// 		log.Println(updateResult)
-		// 		success = updateResult.Success
-		// 	}
-		// }
+		for _, user := range m.groups[command.Group].users {
+			success := false
+			for !success {
+				updateResult := &client.UpdateResult{}
+				err := user.connection.Call("Client.UpdateRPC",
+					client.UpdateARgs{
+						Server:    m.serverId,
+						Group:     command.Group,
+						RequestId: m.requestID,
+					}, updateResult)
+				if err != nil {
+					log.Printf("Failed to call Update: %v", err)
+				}
+				success = updateResult.Success
+			}
+		}
+		m.requestID++
 	case "false":
 		// remove the user from the group
 		delete(m.groups[command.Group].users, command.Username)
@@ -156,7 +164,28 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 	for {
 		select {
 		case command := <-m.commandCh:
-			m.applyCommand(command)
+			go m.applyCommand(command)
+		case command := <-m.readStateCh:
+			// read the state providing the info requested by the received command
+			getStateArgs := &client.GetStateArgs{}
+			err := json.Unmarshal(command, getStateArgs)
+			if err != nil {
+				log.Printf("Error unmarshalling GetStateArgs %v", err)
+				continue
+			}
+			getStateResult := &client.GetStateResult{
+				Messages: make([]models.Message, 0),
+			}
+			group, ok := m.groups[getStateArgs.Group]
+			if ok {
+				getStateResult.Messages = append(getStateResult.Messages, group.messages[getStateArgs.LastMessageIndex+1:]...)
+			}
+			data, err := json.Marshal(getStateResult)
+			if err != nil {
+				log.Printf("Error marshalling GetStateResult %v", err)
+				continue
+			}
+			m.readStateResultCh <- data
 		case <-m.snapshotRequestCh:
 			// create the snapshot
 			// generate the proto object of the state
@@ -247,6 +276,7 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				}
 				m.groups[groupProto.GroupName] = group
 			}
+		default:
 		}
 	}
 }

@@ -153,7 +153,7 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 			}
 
 			// apply the committed action entries to the state machine
-			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedGlobalIndex+1-rn.snapshot.LastIndex] {
+			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex+1 : lastCommitedGlobalIndex+1-rn.snapshot.LastIndex] {
 				if entry.Command != nil && entry.Type == 0 {
 					rn.CommitCh <- entry.Command
 				}
@@ -235,6 +235,7 @@ func (rn *RaftNode) InstallSnapshotRPC(arg InstallSnapshotArguments, res *Instal
 		rn.log.entries = []LogEntry{LogEntry{ // dummy entry
 			Index:   arg.LastIncludedIndex,
 			Term:    arg.LastIncludedTerm,
+			Type:    NOOPEntry,
 			Command: nil,
 			Client:  "",
 			USN:     -1}}

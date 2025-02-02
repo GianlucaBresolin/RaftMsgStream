@@ -61,8 +61,10 @@ type RaftNode struct {
 	pendingCommit map[uint]replicationState
 	lastUSNof     map[string]int
 	// state machine logic
-	CommitCh        chan []byte
-	ApplySnapshotCh chan []byte
+	CommitCh          chan []byte
+	ApplySnapshotCh   chan []byte
+	ReadStateCh       chan []byte
+	ReadStateResultCh chan []byte
 	// snapshot logic
 	takeSnapshotCh     chan struct{}
 	SnapshotRequestCh  chan struct{}
@@ -99,11 +101,12 @@ func NewRaftNode(id ServerID,
 		nextIndex:             nil,
 		log: logStruct{
 			entries: []LogEntry{
-				// to start the log from index 1 we add a default entry
+				// to start the log from index 1 we add a dummy entry
 				{
 					Index:   0,
 					Term:    0,
 					Command: nil,
+					Type:    NOOPEntry,
 					Client:  "",
 					USN:     -1,
 				},
@@ -115,6 +118,8 @@ func NewRaftNode(id ServerID,
 		lastUSNof:          make(map[string]int),
 		CommitCh:           make(chan []byte),
 		ApplySnapshotCh:    make(chan []byte),
+		ReadStateCh:        make(chan []byte),
+		ReadStateResultCh:  make(chan []byte),
 		takeSnapshotCh:     make(chan struct{}),
 		SnapshotRequestCh:  make(chan struct{}),
 		SnapshotResponseCh: make(chan []byte),
@@ -142,6 +147,12 @@ func (rn *RaftNode) closeChannels() {
 	close(rn.leaderCh)
 	close(rn.takeSnapshotCh)
 	close(rn.logEntriesCh)
+	close(rn.CommitCh)
+	close(rn.ApplySnapshotCh)
+	close(rn.ReadStateCh)
+	close(rn.ReadStateResultCh)
+	close(rn.SnapshotRequestCh)
+	close(rn.SnapshotResponseCh)
 }
 
 func (rn *RaftNode) handleUnvotingNode() {

@@ -24,13 +24,13 @@ func main() {
 
 	client := client.NewClient("Client1", ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"})
 	client.PrepareConnections()
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 3; i++ {
 		client.SendMessage("group1", "Hello World!")
 	}
 
-	msgStreamServer4 := server.NewServer("Server4", ":5004", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, true)
-	msgStreamServer4.PrepareConnectionsWithOtherServers()
-	go msgStreamServer4.Run()
+	// msgStreamServer4 := server.NewServer("Server4", ":5004", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, true)
+	// msgStreamServer4.PrepareConnectionsWithOtherServers()
+	// go msgStreamServer4.Run()
 
 	for {
 	}
