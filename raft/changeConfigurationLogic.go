@@ -89,8 +89,6 @@ func (rn *RaftNode) prepareCnew() {
 		clientCh:               nil, // no client to notify
 	}
 
-	rn.lastUncommitedRequestof[string(rn.id)] = rn.USN
-
 	rn.logEntriesCh <- struct{}{} // trigger log replication
 }
 
@@ -155,7 +153,7 @@ func (rn *RaftNode) applyCommitedConfiguration(command []byte) {
 	}
 
 	_, ok := newConfiguration.NewC[rn.id]
-	if !ok && newConfiguration.OldC == nil { // it is a Cnew configuration
+	if !ok && newConfiguration.OldC == nil && !rn.unvotingServer { // it is a Cnew configuration
 		// we need to shut down the node
 		rn.shutdownCh <- struct{}{}
 		return
@@ -167,7 +165,7 @@ func (rn *RaftNode) applyCommitedConfiguration(command []byte) {
 			_, okInNewC := newConfiguration.NewC[peer]
 			_, okInUnv := rn.unvotingServers[peer]
 
-			if !okInNewC && !okInUnv {
+			if !okInNewC && !okInUnv && peer != rn.id {
 				// remove the connection (it is not in the new configuration and neither in the unvoting servers)
 				log.Println("Closing connection to", peer)
 				connection.Close()

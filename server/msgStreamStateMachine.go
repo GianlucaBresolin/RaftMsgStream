@@ -22,8 +22,13 @@ type command struct {
 	Partecipation string `json:"partecipation"`
 }
 
+type userInfo struct {
+	port       string
+	connection *rpc.Client
+}
+
 type group struct {
-	users    map[string]*rpc.Client
+	users    map[string]userInfo
 	messages []models.Message
 }
 
@@ -32,15 +37,17 @@ type msgStreamStateMachine struct {
 	commandCh          chan []byte
 	snapshotRequestCh  chan struct{}
 	snapshotResponseCh chan []byte
+	applySnapshotCh    chan []byte
 	groups             map[string]*group
 }
 
-func newMsgStreamStateMachine(serverId string) *msgStreamStateMachine {
+func newMsgStreamStateMachine(serverId string, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponde chan []byte, applySnapshotCh chan []byte) *msgStreamStateMachine {
 	return &msgStreamStateMachine{
 		serverId:           serverId,
-		commandCh:          make(chan []byte),
-		snapshotRequestCh:  make(chan struct{}),
-		snapshotResponseCh: make(chan []byte),
+		commandCh:          commandCh,
+		applySnapshotCh:    applySnapshotCh,
+		snapshotRequestCh:  snapshotRequestCh,
+		snapshotResponseCh: snapshotResponde,
 		groups:             make(map[string]*group),
 	}
 }
@@ -60,7 +67,7 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		_, okG := m.groups[command.Group]
 		if !okG {
 			m.groups[command.Group] = &group{
-				users:    make(map[string]*rpc.Client),
+				users:    make(map[string]userInfo),
 				messages: make([]models.Message, 0),
 			}
 		}
@@ -73,7 +80,10 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 			if err != nil {
 				log.Printf("Failed to dial: %v", err)
 			}
-			m.groups[command.Group].users[command.Username] = client
+			m.groups[command.Group].users[command.Username] = userInfo{
+				port:       command.Userport,
+				connection: client,
+			}
 		}
 
 		// add the message (if present) to the group
@@ -157,12 +167,15 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 			for groupName, group := range m.groups {
 				groupProto := &protoServer.Group{
 					GroupName: groupName,
-					Users:     make([]string, 0),
+					Users:     make([]*protoServer.User, 0),
 					Messages:  make([]*protoServer.Message, 0),
 				}
 
 				for username, _ := range group.users {
-					groupProto.Users = append(groupProto.Users, username)
+					groupProto.Users = append(groupProto.Users, &protoServer.User{
+						Username: username,
+						Port:     group.users[username].port,
+					})
 				}
 
 				for _, message := range group.messages {
@@ -188,6 +201,52 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				continue
 			}
 			m.snapshotResponseCh <- compressedSnapshot
+		case snapshot := <-m.applySnapshotCh:
+			// apply the sended snapshot
+			decompressedSnapshot, err := gzipDecompress(snapshot)
+			if err != nil {
+				log.Printf("Error decompressing snapshot %v", err)
+				continue
+			}
+			groups := &protoServer.MsgStreamStateMachine{}
+			err = proto.Unmarshal(decompressedSnapshot, groups)
+			if err != nil {
+				log.Printf("Error unmarshalling snapshot %v", err)
+				continue
+			}
+			// close the current connections
+			for _, group := range m.groups {
+				for _, user := range group.users {
+					user.connection.Close()
+				}
+			}
+			// reset the state
+			m.groups = make(map[string]*group)
+			// rebuild the state from the snapshot
+			for _, groupProto := range groups.Groups {
+				group := &group{
+					users:    make(map[string]userInfo),
+					messages: make([]models.Message, 0),
+				}
+				for _, user := range groupProto.Users {
+					// establish a connection with the user
+					client, err := rpc.Dial("tcp", "localhost"+user.Port)
+					if err != nil {
+						log.Printf("Failed to dial: %v", err)
+					}
+					group.users[user.Username] = userInfo{
+						port:       user.Port,
+						connection: client,
+					}
+				}
+				for _, message := range groupProto.Messages {
+					group.messages = append(group.messages, models.Message{
+						Username: message.Username,
+						Msg:      message.Msg,
+					})
+				}
+				m.groups[groupProto.GroupName] = group
+			}
 		}
 	}
 }

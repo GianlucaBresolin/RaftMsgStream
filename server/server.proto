@@ -9,9 +9,14 @@ message Message {
   string msg = 2;
 }
 
+message User {
+  string username = 1;
+  string port = 2;
+}
+
 message Group {
   string groupName = 1;
-  repeated string users = 2;
+  repeated User users = 2;
   repeated Message messages = 3;
 }
 

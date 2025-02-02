@@ -1,11 +1,15 @@
 package raft
 
-import "log"
+import (
+	"encoding/json"
+	"log"
+)
 
 type Snapshot struct {
 	LastIndex        uint
 	LastTerm         uint
-	LastConfig       Configuration
+	LastConfig       []byte
+	LastUSNof        map[string]int
 	StateMachineSnap []byte
 }
 
@@ -16,14 +20,18 @@ func (rn *RaftNode) handleSnapshot() {
 		rn.mutex.Lock()
 
 		// request the snapshot to the state machine
-		rn.snapshotRequestCh <- struct{}{}
-		stateMachineSnap := <-rn.snapshotResponseCh
+		rn.SnapshotRequestCh <- struct{}{}
+		stateMachineSnap := <-rn.SnapshotResponseCh
+
+		// create the last configuration in []byte
+		lastConfigBytes, _ := json.Marshal(rn.peers)
 
 		// update the snapshot in the raft node
 		rn.snapshot = &Snapshot{
 			LastIndex:        rn.lastGlobalCommitedIndex(),
 			LastTerm:         rn.log.entries[rn.log.lastCommitedIndex].Term,
-			LastConfig:       rn.peers,
+			LastConfig:       lastConfigBytes,
+			LastUSNof:        rn.lastUSNof,
 			StateMachineSnap: stateMachineSnap,
 		}
 		// clean the log and add the dummy entry

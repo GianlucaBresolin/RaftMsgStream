@@ -155,7 +155,7 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 			// apply the committed action entries to the state machine
 			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex : lastCommitedGlobalIndex+1-rn.snapshot.LastIndex] {
 				if entry.Command != nil && entry.Type == 0 {
-					rn.commitCh <- entry.Command
+					rn.CommitCh <- entry.Command
 				}
 			}
 
@@ -179,14 +179,6 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 					delete(rn.pendingCommit, index)
 				}
 			}
-			// update lastUncommitedRequestof
-			rn.lastUncommitedRequestof = make(map[string]int) // reset the map
-			for _, entry := range rn.log.entries[rn.log.lastCommitedIndex:] {
-				if entry.Client != "" {
-					//avoid NO-OP entry
-					rn.lastUncommitedRequestof[entry.Client] = entry.USN
-				}
-			}
 		}
 	} else {
 		if arg.PreviousLogIndex <= rn.lastGlobalIndex() {
@@ -196,6 +188,79 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 	}
 
 	res.Term = rn.term
+	rn.resetTimer()
+	return nil
+}
+
+type InstallSnapshotArguments struct {
+	Term              uint
+	LeaderId          ServerID
+	LastIncludedIndex uint
+	LastIncludedTerm  uint
+	LastConfig        []byte
+	LastUSNof         map[string]int
+	Offset            uint
+	Data              []byte
+	Done              bool
+}
+
+type InstallSnapshotResult struct {
+	Term    uint
+	Success bool
+}
+
+func (rn *RaftNode) InstallSnapshotRPC(arg InstallSnapshotArguments, res *InstallSnapshotResult) error {
+	rn.mutex.Lock()
+	defer rn.mutex.Unlock()
+
+	if arg.Term < rn.term {
+		res.Term = rn.term
+		res.Success = false
+		return nil
+	}
+
+	if arg.Term > rn.term {
+		rn.revertToFollower()
+		rn.currentLeader = arg.LeaderId
+		rn.term = arg.Term
+	}
+
+	// arg.Term == rn.term
+	// update the entries in the log
+	if rn.lastGlobalCommitedIndex() > arg.LastIncludedIndex {
+		// the snapshot is stale, we keep the log entries after the snapshot
+		rn.log.entries = rn.log.entries[arg.LastIncludedIndex+1-rn.snapshot.LastIndex:]
+	} else {
+		// the snapshot is fresh, discard all the log entries and update the lastUSNof
+		rn.log.entries = []LogEntry{LogEntry{ // dummy entry
+			Index:   arg.LastIncludedIndex,
+			Term:    arg.LastIncludedTerm,
+			Command: nil,
+			Client:  "",
+			USN:     -1}}
+		rn.lastUSNof = arg.LastUSNof
+	}
+
+	// apply the snapshot
+	rn.snapshot.LastIndex = arg.LastIncludedIndex
+	rn.snapshot.LastTerm = arg.LastIncludedTerm
+	rn.snapshot.LastConfig = arg.LastConfig
+	if arg.Offset == 0 {
+		rn.snapshot.StateMachineSnap = nil
+	}
+	rn.snapshot.StateMachineSnap = append(rn.snapshot.StateMachineSnap, arg.Data...)
+
+	if arg.Done {
+		// apply the snapshot to the state machine
+		rn.ApplySnapshotCh <- rn.snapshot.StateMachineSnap
+
+		// apply the last configuration in the snapshot
+		rn.applyConfiguration(rn.snapshot.LastConfig)
+		rn.applyCommitedConfiguration(rn.snapshot.LastConfig)
+	}
+
+	res.Term = rn.term
+	res.Success = true
 	rn.resetTimer()
 	return nil
 }

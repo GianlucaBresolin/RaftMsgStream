@@ -110,7 +110,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 					for _, entry := range rn.log.entries[previousLastCommitedIndex : rn.log.lastCommitedIndex+1] {
 						// if we update the lastCommitedIndex, we have to apply to the state all the committed action entries
 						if entry.Type == ActionEntry && entry.Command != nil {
-							rn.commitCh <- entry.Command
+							rn.CommitCh <- entry.Command
 						}
 
 						// if we update the lastCommitedIndex, we have also to check if we committed a configuration change
@@ -141,11 +141,6 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 						// if we update the lastCommitedIndex, we have also to update rn.lastUSNof and rn.pendingRequestof
 						if entry.Client != "" && entry.USN > rn.lastUSNof[entry.Client] {
 							rn.lastUSNof[entry.Client] = entry.USN
-
-							if rn.lastUncommitedRequestof[entry.Client] == entry.USN {
-								// remove last request only if it is the same USN
-								delete(rn.lastUncommitedRequestof, entry.Client)
-							}
 						}
 					}
 				}
@@ -154,8 +149,31 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			} else {
 				// inconsistent log entry in the follower
 				log.Println("inconsistency founded")
-				if rn.nextIndex[node] == 0 {
-					// TODO: send to the follower a snapshot
+				if rn.nextIndex[node]-1-rn.snapshot.LastIndex == 0 {
+					// we donìt have the entries anymore, they are in the snapshot
+					successInstallationSnapshot := false
+					var reply InstallSnapshotResult
+					for !successInstallationSnapshot {
+						err := peerConnection.Call("RaftNode.InstallSnapshotRPC", &InstallSnapshotArguments{
+							Term:              rn.term,
+							LeaderId:          rn.id,
+							LastIncludedIndex: rn.snapshot.LastIndex,
+							LastIncludedTerm:  rn.snapshot.LastTerm,
+							LastConfig:        rn.snapshot.LastConfig,
+							LastUSNof:         rn.snapshot.LastUSNof,
+							Offset:            0,
+							Data:              rn.snapshot.StateMachineSnap,
+							Done:              true,
+						}, &reply)
+						if err != nil {
+							log.Println("Error sending InstallSnapshotRPC to", rn.id, ":", err)
+						}
+						if reply.Success {
+							successInstallationSnapshot = true
+						}
+					}
+					log.Println("Snapshot installed")
+					rn.nextIndex[node] = rn.snapshot.LastIndex + 1
 				} else {
 					rn.nextIndex[node]--
 				}

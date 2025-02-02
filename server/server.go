@@ -10,10 +10,10 @@ type Server struct {
 }
 
 func NewServer(id raft.ServerID, port raft.Port, peers map[raft.ServerID]raft.Port, unvoting bool) *Server {
-	stateMachine := newMsgStreamStateMachine(string(id))
+	raftNode := raft.NewRaftNode(id, port, peers, unvoting)
 	return &Server{
-		raftNode:     raft.NewRaftNode(id, port, peers, stateMachine.commandCh, stateMachine.snapshotRequestCh, stateMachine.snapshotResponseCh, unvoting),
-		stateMachine: stateMachine,
+		raftNode:     raftNode,
+		stateMachine: newMsgStreamStateMachine(string(id), raftNode.CommitCh, raftNode.SnapshotRequestCh, raftNode.SnapshotResponseCh, raftNode.ApplySnapshotCh),
 	}
 }
 

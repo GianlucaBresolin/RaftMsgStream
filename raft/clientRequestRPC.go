@@ -31,13 +31,18 @@ func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequ
 		if !okC {
 			rn.lastUSNof[req.Id] = -1
 		}
-		// check if we already have the request in the last requests
-		_, okP := rn.lastUncommitedRequestof[req.Id]
-		if !okP {
-			rn.lastUncommitedRequestof[req.Id] = -1
+		// check if we already have the request in the last requests still uncommited
+		for _, entry := range rn.log.entries[rn.log.lastCommitedIndex+1:] {
+			if entry.Client == req.Id {
+				// we already have the request in the log, discard it
+				res.Success = false
+				res.Leader = rn.id
+				rn.mutex.Unlock()
+				return nil
+			}
 		}
 
-		if rn.lastUSNof[req.Id] < req.USN && rn.lastUncommitedRequestof[req.Id] < req.USN {
+		if rn.lastUSNof[req.Id] < req.USN {
 			var command []byte
 			if req.Type == 1 {
 				// check if we altready have a configuration change in place
@@ -85,8 +90,6 @@ func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequ
 				term:                   rn.term,
 				clientCh:               clientCh,
 			}
-
-			rn.lastUncommitedRequestof[req.Id] = req.USN
 
 			rn.logEntriesCh <- struct{}{} // trigger log replication
 			rn.mutex.Unlock()

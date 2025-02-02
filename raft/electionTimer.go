@@ -38,6 +38,7 @@ func (rn *RaftNode) handleTimer() {
 			rn.mutex.Lock()
 			if rn.unvotingServer { // do not start election if the server is unvoting
 				// maybe we lost the connection to the leader, so we retry
+				rn.disconnectAsUnvotingNode()
 				rn.connectAsUnvotingNode()
 				rn.mutex.Unlock()
 				continue

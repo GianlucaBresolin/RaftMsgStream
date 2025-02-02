@@ -90,8 +90,6 @@ func (rn *RaftNode) winElection() {
 				committedNewC:          false,
 				clientCh:               nil, // no client to notify
 			}
-
-			rn.lastUncommitedRequestof[string(rn.id)] = rn.USN
 		}
 	}
 

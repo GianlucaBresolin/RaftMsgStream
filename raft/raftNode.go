@@ -56,17 +56,17 @@ type RaftNode struct {
 	nextIndex        map[ServerID]uint
 	USN              int
 	// log logic
-	log                     logStruct
-	logEntriesCh            chan struct{}
-	pendingCommit           map[uint]replicationState
-	lastUSNof               map[string]int
-	lastUncommitedRequestof map[string]int
+	log           logStruct
+	logEntriesCh  chan struct{}
+	pendingCommit map[uint]replicationState
+	lastUSNof     map[string]int
 	// state machine logic
-	commitCh chan []byte
+	CommitCh        chan []byte
+	ApplySnapshotCh chan []byte
 	// snapshot logic
 	takeSnapshotCh     chan struct{}
-	snapshotRequestCh  chan struct{}
-	snapshotResponseCh chan []byte
+	SnapshotRequestCh  chan struct{}
+	SnapshotResponseCh chan []byte
 	snapshot           *Snapshot
 	// unvoting logic
 	unvotingServer  bool
@@ -75,7 +75,10 @@ type RaftNode struct {
 	mutex sync.Mutex
 }
 
-func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponseCh chan []byte, unvoting bool) *RaftNode {
+func NewRaftNode(id ServerID,
+	port Port,
+	peers map[ServerID]Port,
+	unvoting bool) *RaftNode {
 	peers[id] = "" // add self to the peers list
 	raftNode := &RaftNode{
 		id:                    id,
@@ -107,18 +110,18 @@ func NewRaftNode(id ServerID, port Port, peers map[ServerID]Port, commandCh chan
 			},
 			lastCommitedIndex: 0,
 		},
-		logEntriesCh:            make(chan struct{}),
-		pendingCommit:           make(map[uint]replicationState),
-		lastUSNof:               make(map[string]int),
-		lastUncommitedRequestof: make(map[string]int),
-		commitCh:                commandCh,
-		takeSnapshotCh:          make(chan struct{}),
-		snapshotRequestCh:       snapshotRequestCh,
-		snapshotResponseCh:      snapshotResponseCh,
+		logEntriesCh:       make(chan struct{}),
+		pendingCommit:      make(map[uint]replicationState),
+		lastUSNof:          make(map[string]int),
+		CommitCh:           make(chan []byte),
+		ApplySnapshotCh:    make(chan []byte),
+		takeSnapshotCh:     make(chan struct{}),
+		SnapshotRequestCh:  make(chan struct{}),
+		SnapshotResponseCh: make(chan []byte),
 		snapshot: &Snapshot{
 			LastIndex:        0,
 			LastTerm:         0,
-			LastConfig:       Configuration{OldConfig: nil, NewConfig: nil},
+			LastConfig:       nil,
 			StateMachineSnap: nil,
 		},
 		unvotingServer:  unvoting,
