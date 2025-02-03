@@ -22,7 +22,7 @@ type replicationState struct {
 	clientCh               chan bool
 }
 
-func (rn *RaftNode) ClientRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
+func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
 	rn.mutex.Lock()
 
 	if rn.state == Leader {

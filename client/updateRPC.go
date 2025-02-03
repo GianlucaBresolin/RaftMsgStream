@@ -86,6 +86,12 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 	c.LastRequestID = args.RequestId
 	c.USN++
 	log.Println(c.groups[args.Group])
+
+	// send the messages to the frontend
+	for _, message := range getStateResonseData.Messages {
+		c.messageCh <- message
+	}
+
 	reply.Success = true
 	return nil
 }

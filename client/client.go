@@ -16,10 +16,11 @@ type Client struct {
 	Servers       map[string]string
 	Connections   map[string]*rpc.Client
 	groups        map[string][]models.Message
+	messageCh     chan models.Message
 	mutex         sync.Mutex
 }
 
-func (c *Client) RegisterClient() {
+func (c *Client) registerClient() {
 	server := rpc.NewServer()
 	err := server.Register(c)
 	if err != nil {
@@ -44,7 +45,7 @@ func (c *Client) RegisterClient() {
 	}()
 }
 
-func NewClient(id string, port string, servers map[string]string) *Client {
+func NewClient(id string, port string, servers map[string]string, messageCh chan models.Message) *Client {
 	client := &Client{
 		Id:            id,
 		Port:          port,
@@ -53,9 +54,10 @@ func NewClient(id string, port string, servers map[string]string) *Client {
 		Servers:       servers,
 		Connections:   make(map[string]*rpc.Client),
 		groups:        make(map[string][]models.Message),
+		messageCh:     messageCh,
 		mutex:         sync.Mutex{},
 	}
-	client.RegisterClient()
+	client.registerClient()
 	return client
 }
 

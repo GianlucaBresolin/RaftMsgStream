@@ -32,7 +32,7 @@ func (c *Client) SendMessage(group string, msg string) {
 	}
 
 	for !success {
-		err := c.Connections[leader].Call("RaftNode.ClientRequestRPC", args, &reply)
+		err := c.Connections[leader].Call("RaftNode.ActionRequestRPC", args, &reply)
 		if err != nil {
 			log.Printf("Failed to call ClientRequestRPC: %v", err)
 		}
