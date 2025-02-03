@@ -27,10 +27,16 @@ body {
 }
 
 h2 {
-    background-color: #31363F;
     padding: 10px;
     border-radius: 8px;
-    margin-top: 10px;
+    margin: 0px;
+}
+
+#groupName {
+    width: 100%;
+    background-color: #31363F;
+    display: flex;
+    justify-content: center;
 }
 
 #chatContainer {
@@ -52,6 +58,7 @@ h2 {
     max-height: calc(100% - 55px); 
     padding: 5px;
     border-radius: 8px;
+    margin-top: 5px;
 }
 
 #messages::-webkit-scrollbar {
@@ -72,7 +79,6 @@ h2 {
     background: #4c6f70; 
 }
 
-
 .message {
     background-color: #f9f9f9;
     border-radius: 5px;
@@ -81,13 +87,29 @@ h2 {
     width: fit-content;
 }
 
+.username {
+    font-weight: bold;
+}
+
+.other-user {
+    color: #000000;
+}
+
+.our-user {
+    color: #4CAF50;
+}
+
+.message-content {
+    color: #333;
+    overflow-wrap: anywhere;
+}
+
 #inputContainer {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background-color: #76ABAE;
     border-radius: 5px;
-    margin-bottom: 10px;
     width: 100%;
     height: fit-content; 
     flex-shrink: 0; 

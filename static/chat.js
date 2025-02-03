@@ -8,6 +8,15 @@ function sendMessage() {
     });
 }
 
+var username = null;
+
+async function getUsername() {
+    const response = await fetch("http://localhost:8080/get-username");
+    const data = await response.json();
+    console.log(data);
+    username = data.value;
+}
+
 const socket = new WebSocket("ws://localhost:8080/ws");
 
 socket.onopen = () => {
@@ -24,6 +33,10 @@ socket.onmessage = (event) => {
 };
 
 function receiveMessage(message) {
+    // retrieve the username if necessary
+    if (username === null || username === undefined) {
+        getUsername();
+    }
     const messageData = JSON.parse(message);
 
     // message container
@@ -32,14 +45,18 @@ function receiveMessage(message) {
 
     // username container
     let usernameElement = document.createElement("span");
+    usernameElement.classList.add("username");
+    if (messageData.Username == username) {
+        usernameElement.classList.add("our-user");
+    } else {
+        usernameElement.classList.add("other-user");
+    }
     usernameElement.innerText = messageData.Username;
-    usernameElement.style.fontWeight = "bold";
-    usernameElement.style.color = "#4CAF50"; // colore verde per il nome utente
 
     // message content container
     let messageContentElement = document.createElement("span");
+    messageContentElement.classList.add("message-content");
     messageContentElement.innerText = " " +messageData.Msg;
-    messageContentElement.style.color = "#333"; // colore grigio scuro per il messaggio
 
     messageElement.appendChild(usernameElement);
     messageElement.appendChild(messageContentElement);

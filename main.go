@@ -6,6 +6,7 @@ import (
 	"RaftMsgStream/raft"
 	"RaftMsgStream/server"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -61,7 +62,12 @@ func main() {
 	go msgStreamServer2.Run()
 	go msgStreamServer3.Run()
 
-	client := client.NewClient("Gianluca", ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, messageCh)
+	// request the client name to use
+	fmt.Println("Enter your name:")
+	var username string
+	fmt.Scanln(&username)
+
+	client := client.NewClient(username, ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, messageCh)
 	client.PrepareConnections()
 
 	// msgStreamServer4 := server.NewServer("Server4", ":5004", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, true)
@@ -76,7 +82,13 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
 
+	// websocket endpoint to handle received messages
 	router.GET("/ws", handleWebSocket)
+
+	router.GET("/get-username", func(c *gin.Context) {
+		c.JSON(200, gin.H{"value": username})
+		log.Println("Username requested")
+	})
 
 	// API to send a message to a group
 	router.POST("/send", func(c *gin.Context) {
