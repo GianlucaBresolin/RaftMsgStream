@@ -8,69 +8,69 @@ import (
 )
 
 func TestStartElection(t *testing.T) {
-	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
-	nodeState.term = 1
+	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
+	raftNode.term = 1
 
-	nodeState.startElection()
+	raftNode.startElection()
 
-	if nodeState.term != 2 {
-		t.Errorf("Expected term to be 2, got %v", nodeState.term)
+	if raftNode.term != 2 {
+		t.Errorf("Expected term to be 2, got %v", raftNode.term)
 	}
 
-	if nodeState.state != Candidate {
-		t.Errorf("Expected state to be Candidate, got %v", nodeState.state)
+	if raftNode.state != Candidate {
+		t.Errorf("Expected state to be Candidate, got %v", raftNode.state)
 	}
 }
 
 func TestWinElection(t *testing.T) {
-	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
-	nodeState.term = 1
-	nodeState.state = Candidate
-	nodeState.log.entries = []LogEntry{
+	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
+	raftNode.term = 1
+	raftNode.state = Candidate
+	raftNode.log.entries = []LogEntry{
 		{Index: 0, Term: 1},
 		{Index: 1, Term: 1},
 		{Index: 2, Term: 1},
 		{Index: 3, Term: 1},
 	}
-	nodeState.electionTimer = time.NewTimer(time.Second)
-	nodeState.minimumTimer = time.NewTimer(time.Second)
+	raftNode.electionTimer = time.NewTimer(time.Second)
+	raftNode.minimumTimer = time.NewTimer(time.Second)
 
-	nodeState.winElection()
+	raftNode.winElection()
 
-	if nodeState.state != Leader {
-		t.Errorf("Expected state to be Leader, got %v", nodeState.state)
+	if raftNode.state != Leader {
+		t.Errorf("Expected state to be Leader, got %v", raftNode.state)
 	}
 
-	if nodeState.currentLeader != "id" {
-		t.Errorf("Expected currentLeader to be id, got %v", nodeState.currentLeader)
+	if raftNode.currentLeader != "id" {
+		t.Errorf("Expected currentLeader to be id, got %v", raftNode.currentLeader)
 	}
 
-	if nodeState.nextIndex["2"] != 4 {
-		t.Errorf("Expected nextIndex[2] to be 4, got %v", nodeState.nextIndex["2"])
+	if raftNode.nextIndex["2"] != 4 {
+		t.Errorf("Expected nextIndex[2] to be 4, got %v", raftNode.nextIndex["2"])
 	}
 
 	time.Sleep(2 * time.Second) // ensure electionTimer has expired
 	select {
-	case <-nodeState.electionTimer.C:
+	case <-raftNode.electionTimer.C:
 		t.Errorf("Expected electionTimer to be stopped")
 	default:
 	}
 }
 
 func TestRevertToFollower(t *testing.T) {
-	nodeState := newNodeState("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
-	nodeState.state = Leader
-	nodeState.currentLeader = "id"
-	nodeState.myVote = "id"
-	nodeState.nextIndex = map[ServerID]uint{"2": 4, "3": 5}
-	nodeState.electionTimer = time.NewTimer(time.Second)
-	nodeState.minimumTimer = time.NewTimer(time.Second)
-	nodeState.leaderCh = make(chan bool, 1)
+	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1236", "3": "1235"}, false)
+	raftNode.state = Leader
+	raftNode.currentLeader = "id"
+	raftNode.myVote = "id"
+	raftNode.nextIndex = map[ServerID]uint{"2": 4, "3": 5}
+	raftNode.electionTimer = time.NewTimer(time.Second)
+	raftNode.minimumTimer = time.NewTimer(time.Second)
+	raftNode.leaderCh = make(chan bool, 1)
 
-	nodeState.revertToFollower()
+	raftNode.revertToFollower()
 
 	select {
-	case flag := <-nodeState.leaderCh:
+	case flag := <-raftNode.leaderCh:
 		if !flag {
 			t.Errorf("Expected value to be sent to leaderCh")
 		}
@@ -78,16 +78,16 @@ func TestRevertToFollower(t *testing.T) {
 		t.Errorf("Expected value to be sent to leaderCh")
 	}
 
-	if nodeState.state != Follower {
-		t.Errorf("Expected state to be Follower, got %v", nodeState.state)
+	if raftNode.state != Follower {
+		t.Errorf("Expected state to be Follower, got %v", raftNode.state)
 	}
 
-	if nodeState.currentLeader != "" {
-		t.Errorf("Expected currentLeader to be empty, got %v", nodeState.currentLeader)
+	if raftNode.currentLeader != "" {
+		t.Errorf("Expected currentLeader to be empty, got %v", raftNode.currentLeader)
 	}
 
-	if nodeState.myVote != "" {
-		t.Errorf("Expected myVote to be empty, got %v", nodeState.myVote)
+	if raftNode.myVote != "" {
+		t.Errorf("Expected myVote to be empty, got %v", raftNode.myVote)
 	}
 }
 
@@ -116,10 +116,10 @@ func TestAskForVotes(t *testing.T) {
 	server1 := &MockServer{t: t, expectedRequest: expectedRequest, response: mockResponse}
 	server2 := &MockServer{t: t, expectedRequest: expectedRequest, response: mockResponse}
 
-	rpc.RegisterName("Node", server1)
-	rpc.RegisterName("Node", server2)
+	rpc.RegisterName("RaftNode", server1)
+	rpc.RegisterName("RaftNode", server2)
 
-	listener1, err := net.Listen("tcp", ":1234")
+	listener1, err := net.Listen("tcp", ":1236")
 	if err != nil {
 		t.Fatalf("Failed to start mock server 1: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestAskForVotes(t *testing.T) {
 	go rpc.Accept(listener1)
 	go rpc.Accept(listener2)
 
-	client1, err := rpc.Dial("tcp", ":1234")
+	client1, err := rpc.Dial("tcp", ":1236")
 	if err != nil {
 		t.Fatalf("Failed to connect to mock server 1: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestAskForVotes(t *testing.T) {
 	}
 	defer client2.Close()
 
-	nodeState := &nodeState{
+	raftNode := &RaftNode{
 		id: "id",
 		peersConnection: map[ServerID]*rpc.Client{
 			"2": client1,
@@ -158,13 +158,13 @@ func TestAskForVotes(t *testing.T) {
 		state:          Candidate,
 	}
 
-	nodeState.voteRequestCh <- expectedRequest
-	go nodeState.askForVotes()
+	raftNode.voteRequestCh <- expectedRequest
+	go raftNode.askForVotes()
 
 	time.Sleep(1 * time.Second)
 
 	responses := make([]RequestVoteResult, 0)
-	for response := range nodeState.voteResponseCh {
+	for response := range raftNode.voteResponseCh {
 		responses = append(responses, response.result)
 		if len(responses) == 2 {
 			break
@@ -195,7 +195,7 @@ func TestAskForStaledVotes(t *testing.T) {
 
 	server1 := &MockServer{t: t, expectedRequest: expectedRequest, response: mockResponse}
 
-	rpc.RegisterName("Node", server1)
+	rpc.RegisterName("RaftNode", server1)
 
 	listener1, err := net.Listen("tcp", ":1234")
 	if err != nil {
@@ -211,7 +211,7 @@ func TestAskForStaledVotes(t *testing.T) {
 	}
 	defer client1.Close()
 
-	nodeState := &nodeState{
+	raftNode := &RaftNode{
 		id: "id",
 		peersConnection: map[ServerID]*rpc.Client{
 			"2": client1,
@@ -222,13 +222,13 @@ func TestAskForStaledVotes(t *testing.T) {
 		state:          Candidate,
 	}
 
-	nodeState.voteRequestCh <- expectedRequest
-	go nodeState.askForVotes()
+	raftNode.voteRequestCh <- expectedRequest
+	go raftNode.askForVotes()
 
 	time.Sleep(1 * time.Second)
 
 	responses := make([]RequestVoteResult, 0)
-	for response := range nodeState.voteResponseCh {
+	for response := range raftNode.voteResponseCh {
 		responses = append(responses, response.result)
 		if len(responses) == 1 {
 			break
@@ -240,14 +240,14 @@ func TestAskForStaledVotes(t *testing.T) {
 	}
 
 	for _, response := range responses {
-		if !response.VoteGranted {
+		if response.VoteGranted {
 			t.Errorf("Expected VoteGranted to be false, got %v", response.VoteGranted)
 		}
 	}
 }
 
 func TestHandleVotesSuccess(t *testing.T) {
-	nodeState := &nodeState{
+	raftNode := &RaftNode{
 		id:                "id",
 		term:              1,
 		state:             Candidate,
@@ -255,27 +255,47 @@ func TestHandleVotesSuccess(t *testing.T) {
 		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
 		electionTimer:     time.NewTimer(time.Second),
 		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
+		snapshot: &Snapshot{
+			LastIndex:        0,
+			LastTerm:         0,
+			LastConfig:       nil,
+			StateMachineSnap: nil,
+		},
+		log: logStruct{
+			entries: []LogEntry{
+				// to start the log from index 1 we add a dummy entry
+				{
+					Index:   0,
+					Term:    0,
+					Command: nil,
+					Type:    NOOPEntry,
+					Client:  "",
+					USN:     -1,
+				},
+			},
+			lastCommitedIndex: 0,
+		},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, true}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, true}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
-	go nodeState.handleVotes()
+	go raftNode.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotesNewC != 2 {
-		t.Errorf("Expected electionVotes to be 2, got %d", nodeState.electionVotesNewC)
+	if raftNode.electionVotesNewC != 2 {
+		t.Errorf("Expected electionVotes to be 2, got %d", raftNode.electionVotesNewC)
 	}
 
-	if nodeState.state != Leader {
-		t.Errorf("Expected state to be Leader, got %v", nodeState.state)
+	if raftNode.state != Leader {
+		t.Errorf("Expected state to be Leader, got %v", raftNode.state)
 	}
 }
 
 func TestHandleVotesFailure(t *testing.T) {
-	nodeState := &nodeState{
+	raftNode := &RaftNode{
 		id:                "id",
 		term:              1,
 		state:             Candidate,
@@ -286,25 +306,25 @@ func TestHandleVotesFailure(t *testing.T) {
 		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, false}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{1, false}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
-	go nodeState.handleVotes()
+	go raftNode.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotesNewC != 1 {
-		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotesNewC)
+	if raftNode.electionVotesNewC != 1 {
+		t.Errorf("Expected electionVotes to be 1, got %d", raftNode.electionVotesNewC)
 	}
 
-	if nodeState.state != Candidate {
-		t.Errorf("Expected state to be Candidate, got %v", nodeState.state)
+	if raftNode.state != Candidate {
+		t.Errorf("Expected state to be Candidate, got %v", raftNode.state)
 	}
 }
 
 func TestHandleVotesWithNewTerm(t *testing.T) {
-	nodeState := &nodeState{
+	raftNode := &RaftNode{
 		id:                "id",
 		term:              1,
 		state:             Candidate,
@@ -315,19 +335,19 @@ func TestHandleVotesWithNewTerm(t *testing.T) {
 		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
 	}
 
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{2, true}}
-	nodeState.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"2", RequestVoteResult{2, true}}
+	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"3", RequestVoteResult{1, false}}
 
-	go nodeState.handleVotes()
+	go raftNode.handleVotes()
 
 	time.Sleep(1 * time.Second)
 
-	if nodeState.electionVotesNewC != 1 {
-		t.Errorf("Expected electionVotes to be 1, got %d", nodeState.electionVotesNewC)
+	if raftNode.electionVotesNewC != 1 {
+		t.Errorf("Expected electionVotes to be 1, got %d", raftNode.electionVotesNewC)
 	}
 
-	if nodeState.state != Follower {
-		t.Errorf("Expected state to be Follower, got %v", nodeState.state)
+	if raftNode.state != Follower {
+		t.Errorf("Expected state to be Follower, got %v", raftNode.state)
 	}
 }

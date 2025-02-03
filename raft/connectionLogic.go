@@ -33,17 +33,19 @@ func (rn *RaftNode) registerNode() {
 
 func (rn *RaftNode) PrepareConnections() {
 	for peer, port := range rn.peers.NewConfig {
-		if rn.peers.OldConfig[peer] == port {
-			// skip if the peer is already connected
-			continue
-		}
+		go func() {
+			if rn.peers.OldConfig[peer] == port {
+				// skip if the peer is already connected
+				return
+			}
 
-		client, err := rpc.Dial("tcp", "localhost"+string(port))
-		if err != nil {
-			log.Printf("Failed to dial %s: %v", peer, err)
-		} else {
-			log.Printf("Node %s connected to %s", rn.id, peer)
-		}
-		rn.peersConnection[peer] = client
+			client, err := rpc.Dial("tcp", "localhost"+string(port))
+			if err != nil {
+				log.Fatalf("Failed to dial %s: %v", peer, err)
+			} else {
+				log.Printf("Node %s connected to %s", rn.id, peer)
+			}
+			rn.peersConnection[peer] = client
+		}()
 	}
 }
