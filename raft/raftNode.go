@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"log"
 	"net/rpc"
 	"sync"
@@ -82,6 +83,10 @@ func NewRaftNode(id ServerID,
 	peers map[ServerID]Port,
 	unvoting bool) *RaftNode {
 	peers[id] = "" // add self to the peers list
+	lastConfigurationCommand, ok := json.Marshal(peers)
+	if ok != nil {
+		log.Println("Error marshalling last configuration command")
+	}
 	raftNode := &RaftNode{
 		id:                    id,
 		port:                  port,
@@ -126,7 +131,7 @@ func NewRaftNode(id ServerID,
 		snapshot: &Snapshot{
 			LastIndex:        0,
 			LastTerm:         0,
-			LastConfig:       nil,
+			LastConfig:       lastConfigurationCommand,
 			StateMachineSnap: nil,
 		},
 		unvotingServer:  unvoting,

@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"encoding/json"
 	"log"
 )
 
@@ -23,14 +22,23 @@ func (rn *RaftNode) handleSnapshot() {
 		rn.SnapshotRequestCh <- struct{}{}
 		stateMachineSnap := <-rn.SnapshotResponseCh
 
-		// create the last configuration in []byte
-		lastConfigBytes, _ := json.Marshal(rn.peers)
+		// create the last committed configuration in []byte
+		var lastConfigCommand []byte
+		for _, entry := range rn.log.entries[:rn.log.lastCommitedIndex+1] {
+			if entry.Type == ConfigurationEntry {
+				lastConfigCommand = entry.Command
+			}
+		}
+		if lastConfigCommand == nil {
+			// no configuration entry found, use the previous snapshot configuration
+			lastConfigCommand = rn.snapshot.LastConfig
+		}
 
 		// update the snapshot in the raft node
 		rn.snapshot = &Snapshot{
 			LastIndex:        rn.lastGlobalCommitedIndex(),
 			LastTerm:         rn.log.entries[rn.log.lastCommitedIndex].Term,
-			LastConfig:       lastConfigBytes,
+			LastConfig:       lastConfigCommand,
 			LastUSNof:        rn.lastUSNof,
 			StateMachineSnap: stateMachineSnap,
 		}
@@ -44,7 +52,7 @@ func (rn *RaftNode) handleSnapshot() {
 		}}, rn.log.entries[rn.log.lastCommitedIndex+1:]...)
 		rn.log.lastCommitedIndex = 0
 
-		log.Println("Snapshot taken", rn.id)
+		log.Println("Snapshot taken by ", rn.id)
 		rn.mutex.Unlock()
 	}
 }
