@@ -18,12 +18,14 @@ type UpdateResult struct {
 }
 
 type GetStateArgs struct {
+	Username         string
 	Group            string
 	LastMessageIndex uint
 }
 
 type GetStateResult struct {
-	Messages []models.Message
+	Messages   []models.Message
+	Membership bool
 }
 
 func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
@@ -36,8 +38,10 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 		return nil
 	}
 
+	log.Println(len(c.groups[args.Group]))
 	// build the command for the read
 	getStateArgs := &GetStateArgs{
+		Username:         c.Id,
 		Group:            args.Group,
 		LastMessageIndex: uint(len(c.groups[args.Group]) - 1),
 	}
@@ -81,11 +85,18 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 		return nil
 	}
 
-	// add the messages to the group
-	c.groups[args.Group] = append(c.groups[args.Group], getStateResonseData.Messages...)
-	c.LastRequestID = args.RequestId
+	if !getStateResonseData.Membership {
+		// we left the group
+		delete(c.groups, args.Group)
+		c.LastRequestID = args.RequestId
+		log.Printf("Left group %s", args.Group)
+	} else {
+		// add the messages to the group
+		c.groups[args.Group] = append(c.groups[args.Group], getStateResonseData.Messages...)
+		c.LastRequestID = args.RequestId
+		log.Println(c.groups[args.Group])
+	}
 	c.USN++
-	log.Println(c.groups[args.Group])
 
 	// send the messages to the frontend
 	for _, message := range getStateResonseData.Messages {

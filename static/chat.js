@@ -29,13 +29,45 @@ async function getMembership() {
     membership = data.membership;
 }
 
-async function joinGroup() {
+function joinGroup() {
     fetch('/send', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "RaftMsgStream", message: "join group1" })
+        body: JSON.stringify({ group: "RaftMsgStream", message: null })
     });
+
+    setTimeout(async () => {
+        if (membership == false || membership == undefined) {
+            await getMembership();
+            if (membership == true) {
+                document.getElementById("chatContainer").style.display = "flex";
+                document.getElementById("leaveGroup").style.display = "block";
+                document.getElementById("joinGroup").style.display = "none";
+            }
+        }
+    }, 300);
 }
+
+function leaveGroup() {
+    fetch('/leave', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: "RaftMsgStream" })
+    });
+    
+    setTimeout(async () => {
+        if (membership == true) {
+            await getMembership();
+            if (membership == false) {
+                document.getElementById("chatContainer").style.display = "none";
+                document.getElementById("leaveGroup").style.display = "none";
+                document.getElementById("joinGroup").style.display = "block";
+                document.getElementById("messages").innerHTML = "";
+            }
+        }
+    }, 300);
+}
+
 
 const socket = new WebSocket("ws://localhost:8080/ws");
 
@@ -45,9 +77,9 @@ socket.onopen = async () => {
     }
     if (membership == false) {
         document.getElementById("chatContainer").style.display = "none";
+        document.getElementById("leaveGroup").style.display = "none";   
         document.getElementById("joinGroup").style.display = "block";
     }
-    console.log("WebSocket connection established");
 };
 
 socket.onerror = (error) => {
@@ -55,14 +87,6 @@ socket.onerror = (error) => {
 };
 
 socket.onmessage = async (event) => {
-    if (membership == false || membership == undefined) {
-        await getMembership();
-        console.log(membership);
-        if (membership == true) {
-            document.getElementById("chatContainer").style.display = "flex";
-            document.getElementById("joinGroup").style.display = "none";
-        }
-    }
     receiveMessage(event.data);
 };
 

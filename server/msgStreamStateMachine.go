@@ -120,7 +120,24 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		m.requestID++
 	case "false":
 		// remove the user from the group
+		connectionUser := m.groups[command.Group].users[command.Username].connection
 		delete(m.groups[command.Group].users, command.Username)
+		// notify the user that he has been removed
+		success := false
+		for !success {
+			updateResult := &client.UpdateResult{}
+			err := connectionUser.Call("Client.UpdateRPC",
+				client.UpdateARgs{
+					Server:    m.serverId,
+					Group:     command.Group,
+					RequestId: m.requestID,
+				}, updateResult)
+			if err != nil {
+				log.Printf("Failed to call Update: %v", err)
+			}
+			success = updateResult.Success
+		}
+		m.requestID++
 	}
 }
 
@@ -174,12 +191,20 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				continue
 			}
 			getStateResult := &client.GetStateResult{
-				Messages: make([]models.Message, 0),
+				Messages:   make([]models.Message, 0),
+				Membership: false,
 			}
+
+			// set the membership of the user in the group required
+			_, okU := m.groups[getStateArgs.Group].users[getStateArgs.Username]
+			getStateResult.Membership = okU
+
+			// set the messages of the group required
 			group, ok := m.groups[getStateArgs.Group]
 			if ok {
 				getStateResult.Messages = append(getStateResult.Messages, group.messages[getStateArgs.LastMessageIndex+1:]...)
 			}
+
 			data, err := json.Marshal(getStateResult)
 			if err != nil {
 				log.Printf("Error marshalling GetStateResult %v", err)

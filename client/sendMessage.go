@@ -4,7 +4,6 @@ import (
 	"RaftMsgStream/raft"
 	"encoding/json"
 	"log"
-	"time"
 )
 
 func (c *Client) SendMessage(group string, msg string) {
@@ -43,8 +42,6 @@ func (c *Client) SendMessage(group string, msg string) {
 				leader = string(reply.Leader)
 			}
 		}
-		time.Sleep(1 * time.Second)
 	}
-
 	c.USN++
 }

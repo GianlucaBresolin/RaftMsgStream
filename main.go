@@ -101,11 +101,23 @@ func main() {
 		}
 
 		membership := client.GetMembership(req.Group)
-		log.Println("Membership:", membership)
 		c.JSON(http.StatusOK, gin.H{"membership": membership})
 	})
 
-	// API to send a message to a group
+	// API to leave a group
+	router.POST("/leave", func(c *gin.Context) {
+		var req struct {
+			Group string `json:"group"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+		client.LeaveGroup(req.Group)
+		c.JSON(http.StatusOK, gin.H{"status": "left group"})
+	})
+
+	// API to send a message to a group or join a group (if there are no messages to send)
 	router.POST("/send", func(c *gin.Context) {
 		var req struct {
 			Group   string `json:"group"`
