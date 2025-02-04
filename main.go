@@ -85,8 +85,24 @@ func main() {
 	// websocket endpoint to handle received messages
 	router.GET("/ws", handleWebSocket)
 
+	// API to get the username
 	router.GET("/get-username", func(c *gin.Context) {
 		c.JSON(200, gin.H{"value": username})
+	})
+
+	// API to get the membership in a group of a user
+	router.POST("/get-membership", func(c *gin.Context) {
+		var req struct {
+			Group string `form:"group"`
+		}
+		if err := c.ShouldBind(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+			return
+		}
+
+		membership := client.GetMembership(req.Group)
+		log.Println("Membership:", membership)
+		c.JSON(http.StatusOK, gin.H{"membership": membership})
 	})
 
 	// API to send a message to a group

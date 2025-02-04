@@ -4,7 +4,7 @@ function sendMessage() {
     fetch('/send', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "group1", message: text })
+        body: JSON.stringify({ group: "RaftMsgStream", message: text })
     });
 }
 
@@ -18,9 +18,35 @@ async function getUsername() {
     }
 }
 
+var membership = false;
+async function getMembership() {
+    const response = await fetch('/get-membership', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: "RaftMsgStream" })
+    });
+    const data = await response.json();
+    membership = data.membership;
+}
+
+async function joinGroup() {
+    fetch('/send', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group: "RaftMsgStream", message: "join group1" })
+    });
+}
+
 const socket = new WebSocket("ws://localhost:8080/ws");
 
-socket.onopen = () => {
+socket.onopen = async () => {
+    if (username == null || username == undefined) {
+        await getUsername();
+    }
+    if (membership == false) {
+        document.getElementById("chatContainer").style.display = "none";
+        document.getElementById("joinGroup").style.display = "block";
+    }
     console.log("WebSocket connection established");
 };
 
@@ -29,9 +55,13 @@ socket.onerror = (error) => {
 };
 
 socket.onmessage = async (event) => {
-    console.log("Received message:", event.data);
-    if (username == null || username == undefined) {
-        await getUsername();
+    if (membership == false || membership == undefined) {
+        await getMembership();
+        console.log(membership);
+        if (membership == true) {
+            document.getElementById("chatContainer").style.display = "flex";
+            document.getElementById("joinGroup").style.display = "none";
+        }
     }
     receiveMessage(event.data);
 };
