@@ -87,7 +87,6 @@ func main() {
 
 	router.GET("/get-username", func(c *gin.Context) {
 		c.JSON(200, gin.H{"value": username})
-		log.Println("Username requested")
 	})
 
 	// API to send a message to a group

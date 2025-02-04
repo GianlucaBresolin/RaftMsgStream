@@ -8,13 +8,14 @@ function sendMessage() {
     });
 }
 
-var username = null;
+var username; 
 
 async function getUsername() {
-    const response = await fetch("http://localhost:8080/get-username");
-    const data = await response.json();
-    console.log(data);
-    username = data.value;
+    while (username == null || username == undefined) {
+        const response = await fetch("http://localhost:8080/get-username");
+        const data = await response.json();
+        username = data.value;
+    }
 }
 
 const socket = new WebSocket("ws://localhost:8080/ws");
@@ -27,16 +28,15 @@ socket.onerror = (error) => {
     console.error("WebSocket error:", error);
 };
 
-socket.onmessage = (event) => {
+socket.onmessage = async (event) => {
     console.log("Received message:", event.data);
+    if (username == null || username == undefined) {
+        await getUsername();
+    }
     receiveMessage(event.data);
 };
 
-function receiveMessage(message) {
-    // retrieve the username if necessary
-    if (username === null || username === undefined) {
-        getUsername();
-    }
+async function receiveMessage(message) {
     const messageData = JSON.parse(message);
 
     // message container

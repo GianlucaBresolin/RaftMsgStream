@@ -54,6 +54,8 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			if res.Term > rn.term {
 				rn.revertToFollower()
 				rn.term = res.Term
+				rn.mutex.Unlock()
+				return
 			}
 
 			if res.Success {
