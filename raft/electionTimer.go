@@ -47,7 +47,7 @@ func (rn *RaftNode) handleTimer() {
 			rn.startElection()
 			rn.resetTimer()
 			rn.mutex.Unlock()
-		case <-rn.shutdownTimers:
+		case <-rn.shutdownTimersCh:
 			return
 		}
 	}

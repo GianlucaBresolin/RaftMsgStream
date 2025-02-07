@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/rpc"
+	"time"
 
 	"RaftMsgStream/server/protoServer"
 
@@ -36,6 +37,7 @@ type group struct {
 type msgStreamStateMachine struct {
 	serverId           string
 	requestID          int
+	shutdownCh         chan struct{}
 	commandCh          chan []byte
 	readStateCh        chan []byte
 	readStateResultCh  chan []byte
@@ -49,6 +51,7 @@ func newMsgStreamStateMachine(serverId string, commandCh chan []byte, snapshotRe
 	return &msgStreamStateMachine{
 		serverId:           serverId,
 		requestID:          0,
+		shutdownCh:         make(chan struct{}),
 		commandCh:          commandCh,
 		applySnapshotCh:    applySnapshotCh,
 		snapshotRequestCh:  snapshotRequestCh,
@@ -103,18 +106,29 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		// notify all the users in the group
 		for _, user := range m.groups[command.Group].users {
 			success := false
+			updateResult := &client.UpdateResult{}
 			for !success {
-				updateResult := &client.UpdateResult{}
-				err := user.connection.Call("Client.UpdateRPC",
-					client.UpdateARgs{
-						Server:    m.serverId,
-						Group:     command.Group,
-						RequestId: m.requestID,
-					}, updateResult)
-				if err != nil {
-					log.Printf("Failed to call Update: %v", err)
+				done := make(chan error, 1)
+				timeout := time.NewTimer(20 * time.Millisecond)
+
+				go func() {
+					done <- user.connection.Call("Client.UpdateRPC",
+						client.UpdateARgs{
+							Server:    m.serverId,
+							Group:     command.Group,
+							RequestId: m.requestID,
+						}, updateResult)
+				}()
+
+				select {
+				case err := <-done:
+					if err != nil {
+						log.Printf("Failed to call Update: %v", err)
+					}
+					success = updateResult.Success
+				case <-timeout.C:
+					log.Println("Timeout calling Update to notify the user that he has been added or a message has arrived")
 				}
-				success = updateResult.Success
 			}
 		}
 		m.requestID++
@@ -123,19 +137,30 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		connectionUser := m.groups[command.Group].users[command.Username].connection
 		delete(m.groups[command.Group].users, command.Username)
 		// notify the user that he has been removed
+		updateResult := &client.UpdateResult{}
 		success := false
 		for !success {
-			updateResult := &client.UpdateResult{}
-			err := connectionUser.Call("Client.UpdateRPC",
-				client.UpdateARgs{
-					Server:    m.serverId,
-					Group:     command.Group,
-					RequestId: m.requestID,
-				}, updateResult)
-			if err != nil {
-				log.Printf("Failed to call Update: %v", err)
+			done := make(chan error, 1)
+			timeout := time.NewTimer(20 * time.Millisecond)
+
+			go func() {
+				done <- connectionUser.Call("Client.UpdateRPC",
+					client.UpdateARgs{
+						Server:    m.serverId,
+						Group:     command.Group,
+						RequestId: m.requestID,
+					}, updateResult)
+			}()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					log.Printf("Failed to call Update: %v", err)
+				}
+				success = updateResult.Success
+			case <-timeout.C:
+				log.Printf("Timeout calling Update to notify the user that he has been removed")
 			}
-			success = updateResult.Success
 		}
 		m.requestID++
 	}
@@ -181,7 +206,9 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 	for {
 		select {
 		case command := <-m.commandCh:
-			go m.applyCommand(command)
+			if command != nil {
+				go m.applyCommand(command)
+			}
 		case command := <-m.readStateCh:
 			// read the state providing the info requested by the received command
 			getStateArgs := &client.GetStateArgs{}
@@ -301,7 +328,9 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				}
 				m.groups[groupProto.GroupName] = group
 			}
-		default:
+		case <-m.shutdownCh:
+			close(m.shutdownCh)
+			return
 		}
 	}
 }

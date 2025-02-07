@@ -5,6 +5,7 @@ import (
 	"RaftMsgStream/raft"
 	"encoding/json"
 	"log"
+	"time"
 )
 
 type UpdateARgs struct {
@@ -32,13 +33,21 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	// if we have almost an unvoting server, we wants to update by it
+	if len(c.UnvotingServers) > 0 {
+		_, ok := c.UnvotingServers[args.Server]
+		if !ok {
+			reply.Success = false
+			return nil
+		}
+	}
+
 	// check if the update is stale
 	if args.RequestId <= c.LastRequestID {
 		reply.Success = true
 		return nil
 	}
 
-	log.Println(len(c.groups[args.Group]))
 	// build the command for the read
 	getStateArgs := &GetStateArgs{
 		Username:         c.Id,
@@ -56,25 +65,37 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 	getStateResonse := &raft.ClientRequestResult{}
 	failRead := false
 	for !failRead {
-		err := c.Connections[args.Server].Call("RaftNode.GetStateRPC",
-			raft.ClientRequestArguments{
-				Command: command,
-				Type:    raft.NOOPEntry,
-				Id:      c.Id,
-				USN:     c.USN,
-			}, getStateResonse)
-		if err != nil {
-			log.Printf("Failed to call GetStateRPC: %v", err)
-			reply.Success = false
-			return nil
+		done := make(chan error, 1)
+		timeout := time.NewTimer(20 * time.Millisecond)
+
+		go func() {
+			log.Println("the client is reading the state from the server", args.Server)
+			done <- c.Connections[args.Server].Call("RaftNode.GetStateRPC",
+				raft.ClientRequestArguments{
+					Command: command,
+					Type:    raft.NOOPEntry,
+					Id:      c.Id,
+					USN:     c.USN,
+				}, getStateResonse)
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				log.Printf("Failed to call GetStateRPC: %v", err)
+				reply.Success = false
+				return nil
+			}
+			if !getStateResonse.Success {
+				// the read failed, retry
+				log.Printf("Failed to read from server %s, retrying with the new leader", args.Server)
+				args.Server = string(getStateResonse.Leader)
+				continue
+			}
+			failRead = true
+		case <-timeout.C:
+			log.Println("Timeout reading from server", args.Server, "retrying...")
 		}
-		if !getStateResonse.Success {
-			// the read failed, retry
-			log.Printf("Failed to read from server %s, retrying", args.Server)
-			args.Server = string(getStateResonse.Leader)
-			continue
-		}
-		failRead = true
 	}
 	// prepare the message from the result of the getStateRPC
 	var getStateResonseData GetStateResult
@@ -94,13 +115,12 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 		// add the messages to the group
 		c.groups[args.Group] = append(c.groups[args.Group], getStateResonseData.Messages...)
 		c.LastRequestID = args.RequestId
-		log.Println(c.groups[args.Group])
 	}
 	c.USN++
 
 	// send the messages to the frontend
 	for _, message := range getStateResonseData.Messages {
-		c.messageCh <- message
+		c.MessageCh <- message
 	}
 
 	reply.Success = true

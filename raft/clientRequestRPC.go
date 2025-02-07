@@ -91,9 +91,8 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 				term:                   rn.term,
 				clientCh:               clientCh,
 			}
-
-			rn.logEntriesCh <- struct{}{} // trigger log replication
 			rn.mutex.Unlock()
+			rn.logEntriesCh <- struct{}{} // trigger log replication
 
 			committed := <-clientCh
 
@@ -112,58 +111,62 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 
 func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestResult) error {
 	rn.mutex.Lock()
+	// provide the read-only operation sacrificing linearizability if unvoting server, otherwise
+	// if we are the leader, proceed with the no-op entry to provide the most up-to-date state
+	if !rn.unvotingServer {
+		if rn.state != Leader {
+			res.Success = false
+			res.Leader = rn.currentLeader
+			rn.mutex.Unlock()
+			return nil
+		}
 
-	if rn.state != Leader {
-		res.Success = false
-		res.Leader = rn.currentLeader
+		// append a NOOP entry to the log
+		logEntry := LogEntry{
+			Index:   rn.lastGlobalIndex() + 1,
+			Term:    rn.term,
+			Command: nil,
+			Type:    NOOPEntry,
+			Client:  string(rn.id),
+			USN:     rn.USN,
+		}
+		rn.log.entries = append(rn.log.entries, logEntry)
+		nodeCh := make(chan bool)
+
+		commitedOldC := false
+		if rn.peers.OldConfig == nil {
+			commitedOldC = true
+		}
+
+		_, ok := rn.peers.NewConfig[rn.id]
+		replicationCounterNewC := 0
+		if ok {
+			replicationCounterNewC = 1 // leader already replicated
+		}
+
+		rn.pendingCommit[logEntry.Index] = replicationState{
+			replicationCounterOldC: 1, // leader already replicated
+			replicationCounterNewC: uint(replicationCounterNewC),
+			committedOldC:          commitedOldC,
+			committedNewC:          false,
+			term:                   rn.term,
+			clientCh:               nodeCh,
+		}
+
 		rn.mutex.Unlock()
-		return nil
+		rn.logEntriesCh <- struct{}{} // trigger log replication
+
+		committed := <-nodeCh
+		close(nodeCh)
+		if !committed {
+			res.Success = false
+			res.Leader = rn.id
+			return nil
+		}
+		rn.mutex.Lock()
 	}
 
-	// append a NOOP entry to the log
-	logEntry := LogEntry{
-		Index:   rn.lastGlobalIndex() + 1,
-		Term:    rn.term,
-		Command: nil,
-		Type:    NOOPEntry,
-		Client:  string(rn.id),
-		USN:     rn.USN,
-	}
-	rn.log.entries = append(rn.log.entries, logEntry)
-	nodeCh := make(chan bool)
-
-	commitedOldC := false
-	if rn.peers.OldConfig == nil {
-		commitedOldC = true
-	}
-
-	_, ok := rn.peers.NewConfig[rn.id]
-	replicationCounterNewC := 0
-	if ok {
-		replicationCounterNewC = 1 // leader already replicated
-	}
-
-	rn.pendingCommit[logEntry.Index] = replicationState{
-		replicationCounterOldC: 1, // leader already replicated
-		replicationCounterNewC: uint(replicationCounterNewC),
-		committedOldC:          commitedOldC,
-		committedNewC:          false,
-		term:                   rn.term,
-		clientCh:               nodeCh,
-	}
-
-	rn.logEntriesCh <- struct{}{} // trigger log replication
-	rn.mutex.Unlock()
-
-	committed := <-nodeCh
-	close(nodeCh)
-	if !committed {
-		res.Success = false
-		res.Leader = rn.id
-		return nil
-	}
 	// we can now read the state machine
-	rn.mutex.Lock()
 	rn.USN++
 	rn.ReadStateCh <- req.Command // trigger the command read to the state machine
 

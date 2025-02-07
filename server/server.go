@@ -25,3 +25,8 @@ func (s *Server) Run() {
 	go s.raftNode.HandleRaftNode()
 	go s.stateMachine.handleMsgStreamStateMachine()
 }
+
+func (s *Server) Close() {
+	s.raftNode.ShutdownCh <- struct{}{}
+	s.stateMachine.shutdownCh <- struct{}{}
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -45,8 +46,14 @@ func handleWebSocket(c *gin.Context) {
 }
 
 var messageCh = make(chan models.Message)
+var fakeMessageCh = make(chan models.Message)
 
 func main() {
+	// request the client name to use
+	fmt.Println("Enter username:")
+	var username string
+	fmt.Scanln(&username)
+
 	// create a new server
 	msgStreamServer1 := server.NewServer("Server1", ":5001", map[raft.ServerID]raft.Port{"Server2": ":5002", "Server3": ":5003"}, false)
 	msgStreamServer2 := server.NewServer("Server2", ":5002", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server3": ":5003"}, false)
@@ -62,17 +69,24 @@ func main() {
 	go msgStreamServer2.Run()
 	go msgStreamServer3.Run()
 
-	// request the client name to use
-	fmt.Println("Enter your name:")
-	var username string
-	fmt.Scanln(&username)
+	user := client.NewClient(username, ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, messageCh)
+	user.PrepareConnections()
 
-	client := client.NewClient(username, ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, messageCh)
-	client.PrepareConnections()
+	fakeUser := client.NewClient("Other User", ":6002", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, fakeMessageCh)
+	fakeUser.PrepareConnections()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
 
-	// msgStreamServer4 := server.NewServer("Server4", ":5004", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, true)
-	// msgStreamServer4.PrepareConnectionsWithOtherServers()
-	// go msgStreamServer4.Run()
+		for {
+			select {
+			case <-ticker.C:
+				fakeUser.SendMessage("RaftMsgStream", "RaftMsgStream")
+			case <-fakeMessageCh:
+				// drain the channel
+			}
+		}
+	}()
 
 	router := gin.Default()
 	router.LoadHTMLGlob("templates/*")
@@ -100,7 +114,7 @@ func main() {
 			return
 		}
 
-		membership := client.GetMembership(req.Group)
+		membership := user.GetMembership(req.Group)
 		c.JSON(http.StatusOK, gin.H{"membership": membership})
 	})
 
@@ -113,7 +127,7 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 			return
 		}
-		client.LeaveGroup(req.Group)
+		user.LeaveGroup(req.Group)
 		c.JSON(http.StatusOK, gin.H{"status": "left group"})
 	})
 
@@ -128,10 +142,18 @@ func main() {
 			return
 		}
 
-		client.SendMessage(req.Group, req.Message)
+		user.SendMessage(req.Group, req.Message)
 		c.JSON(http.StatusOK, gin.H{"status": "message sent"})
 	})
 
-	router.Run(":8080")
+	go func() {
+		if err := router.Run(":8080"); err != nil {
+			log.Fatalf("Failed to start Gin router: %v", err)
+		}
+	}()
+
+	for {
+
+	}
 
 }

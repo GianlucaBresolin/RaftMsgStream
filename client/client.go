@@ -9,15 +9,16 @@ import (
 )
 
 type Client struct {
-	Id            string
-	Port          string
-	USN           int
-	LastRequestID int
-	Servers       map[string]string
-	Connections   map[string]*rpc.Client
-	groups        map[string][]models.Message
-	messageCh     chan models.Message
-	mutex         sync.Mutex
+	Id              string
+	Port            string
+	USN             int
+	LastRequestID   int
+	Servers         map[string]string
+	UnvotingServers map[string]string
+	Connections     map[string]*rpc.Client
+	groups          map[string][]models.Message
+	MessageCh       chan models.Message
+	mutex           sync.Mutex
 }
 
 func (c *Client) registerClient() {
@@ -47,15 +48,16 @@ func (c *Client) registerClient() {
 
 func NewClient(id string, port string, servers map[string]string, messageCh chan models.Message) *Client {
 	client := &Client{
-		Id:            id,
-		Port:          port,
-		USN:           0,
-		LastRequestID: -1,
-		Servers:       servers,
-		Connections:   make(map[string]*rpc.Client),
-		groups:        make(map[string][]models.Message),
-		messageCh:     messageCh,
-		mutex:         sync.Mutex{},
+		Id:              id,
+		Port:            port,
+		USN:             0,
+		LastRequestID:   -1,
+		Servers:         servers,
+		UnvotingServers: make(map[string]string),
+		Connections:     make(map[string]*rpc.Client),
+		groups:          make(map[string][]models.Message),
+		MessageCh:       messageCh,
+		mutex:           sync.Mutex{},
 	}
 	client.registerClient()
 	return client
@@ -71,4 +73,26 @@ func (c *Client) PrepareConnections() {
 		}
 		c.Connections[server] = connection
 	}
+}
+
+func (c *Client) AddUnvotingServer(server string, port string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.UnvotingServers[server] = port
+	// establish connection
+	connection, err := rpc.Dial("tcp", "localhost"+port)
+	if err != nil {
+		log.Printf("Failed to dial %s: %v", server, err)
+	} else {
+		c.Connections[server] = connection
+	}
+}
+
+func (c *Client) RemoveUnvotingServer(server string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	delete(c.UnvotingServers, server)
+	delete(c.Connections, server)
 }

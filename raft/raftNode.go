@@ -21,7 +21,7 @@ const CandidateTimeout = 10
 
 const LeaderTimeout = 20
 
-const snapshotThreshold = 5
+const snapshotThreshold = 1024
 
 type ServerID string
 type Port string
@@ -38,11 +38,11 @@ type RaftNode struct {
 	term            uint
 	peers           Configuration
 	peersConnection map[ServerID]*rpc.Client
-	shutdownCh      chan struct{}
+	ShutdownCh      chan struct{}
 	// elction logic
 	electionTimer         *time.Timer
 	minimumTimer          *time.Timer
-	shutdownTimers        chan struct{}
+	shutdownTimersCh      chan struct{}
 	electionVotesNewC     int
 	electionVotesOldC     int
 	voteResponseCh        chan RequestVoteResultWithServerID
@@ -68,6 +68,7 @@ type RaftNode struct {
 	ReadStateResultCh chan []byte
 	// snapshot logic
 	takeSnapshotCh     chan struct{}
+	shutdownSnapshotCh chan struct{}
 	SnapshotRequestCh  chan struct{}
 	SnapshotResponseCh chan []byte
 	snapshot           *Snapshot
@@ -83,9 +84,13 @@ func NewRaftNode(id ServerID,
 	peers map[ServerID]Port,
 	unvoting bool) *RaftNode {
 	peers[id] = "" // add self to the peers list
-	lastConfigurationCommand, ok := json.Marshal(peers)
+	configDummySnap := Configuration{
+		OldConfig: nil,
+		NewConfig: peers,
+	}
+	snapshotConfigurationCommand, ok := json.Marshal(configDummySnap)
 	if ok != nil {
-		log.Println("Error marshalling last configuration command")
+		log.Println("Error marshalling dummy snapshot configuration command")
 	}
 	raftNode := &RaftNode{
 		id:                    id,
@@ -94,8 +99,8 @@ func NewRaftNode(id ServerID,
 		state:                 Follower,
 		peers:                 Configuration{OldConfig: nil, NewConfig: peers},
 		peersConnection:       make(map[ServerID]*rpc.Client),
-		shutdownCh:            make(chan struct{}),
-		shutdownTimers:        make(chan struct{}),
+		ShutdownCh:            make(chan struct{}),
+		shutdownTimersCh:      make(chan struct{}),
 		shutdownHandleVotesCh: make(chan struct{}),
 		voteResponseCh:        make(chan RequestVoteResultWithServerID, len(peers)),
 		shutdownAskForVotesCh: make(chan struct{}),
@@ -126,12 +131,13 @@ func NewRaftNode(id ServerID,
 		ReadStateCh:        make(chan []byte),
 		ReadStateResultCh:  make(chan []byte),
 		takeSnapshotCh:     make(chan struct{}),
+		shutdownSnapshotCh: make(chan struct{}),
 		SnapshotRequestCh:  make(chan struct{}),
 		SnapshotResponseCh: make(chan []byte),
 		snapshot: &Snapshot{
 			LastIndex:        0,
 			LastTerm:         0,
-			LastConfig:       lastConfigurationCommand,
+			LastConfig:       snapshotConfigurationCommand,
 			StateMachineSnap: nil,
 		},
 		unvotingServer:  unvoting,
@@ -142,8 +148,8 @@ func NewRaftNode(id ServerID,
 }
 
 func (rn *RaftNode) closeChannels() {
-	close(rn.shutdownCh)
-	close(rn.shutdownTimers)
+	close(rn.ShutdownCh)
+	close(rn.shutdownTimersCh)
 	close(rn.shutdownAskForVotesCh)
 	close(rn.shutdownHandleVotesCh)
 	close(rn.voteResponseCh)
@@ -158,20 +164,38 @@ func (rn *RaftNode) closeChannels() {
 	close(rn.ReadStateResultCh)
 	close(rn.SnapshotRequestCh)
 	close(rn.SnapshotResponseCh)
+	close(rn.shutdownSnapshotCh)
 }
 
-func (rn *RaftNode) handleUnvotingNode() {
+func (rn *RaftNode) handleUnvotingNode() bool {
 	rn.connectAsUnvotingNode()
 
 	for rn.unvotingServer {
+		select {
+		case <-rn.ShutdownCh:
+			rn.mutex.Lock()
+			rn.closeConnections()
+			rn.disconnectAsUnvotingNode()
+			rn.closeChannels()
+			rn.mutex.Unlock()
+			return false
+		default:
+			// do nothing
+		}
 	}
+	return true
 }
 
 func (rn *RaftNode) HandleRaftNode() {
 	rn.startTimer()
 
 	if rn.unvotingServer {
-		rn.handleUnvotingNode()
+		joinTheCluster := rn.handleUnvotingNode()
+		if !joinTheCluster {
+			// the unvoting node is shutting down
+			return
+		}
+		// the unvoting node has joined the cluster
 	}
 
 	go rn.handleTimer()
@@ -180,20 +204,18 @@ func (rn *RaftNode) HandleRaftNode() {
 
 	go rn.handleSnapshot()
 
-	for {
-		select {
-		case <-rn.shutdownCh:
-			rn.mutex.Lock()
-			if rn.state == Leader {
-				rn.revertToFollower()
-			}
-			rn.shutdownAskForVotesCh <- struct{}{}
-			rn.shutdownHandleVotesCh <- struct{}{}
-			rn.shutdownTimers <- struct{}{}
-			rn.closeChannels()
-			rn.mutex.Unlock()
-			log.Println("Node", rn.id, "shutdown")
-			return
-		}
+	// wait for shutdown
+	<-rn.ShutdownCh
+	rn.mutex.Lock()
+	if rn.state == Leader {
+		rn.revertToFollower()
 	}
+	rn.shutdownAskForVotesCh <- struct{}{}
+	rn.shutdownHandleVotesCh <- struct{}{}
+	rn.shutdownTimersCh <- struct{}{}
+	rn.shutdownSnapshotCh <- struct{}{}
+	rn.closeChannels()
+	rn.closeConnections()
+	rn.mutex.Unlock()
+	log.Println("Node", rn.id, "shutdown")
 }

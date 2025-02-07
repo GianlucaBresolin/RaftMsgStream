@@ -1,5 +1,7 @@
 package raft
 
+import "log"
+
 type RequestVoteArguments struct {
 	Term         uint
 	CandidateId  ServerID
@@ -109,13 +111,25 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 	var previousEntry LogEntry
 	if arg.PreviousLogIndex > rn.lastGlobalIndex() {
 		// we don't have the log entry at previousLogIndex
+		log.Println("Node", rn.id, "does not have the log entry at index", arg.PreviousLogIndex, "its last index is", rn.lastGlobalIndex())
 		exist = false
 	} else {
+		if arg.PreviousLogIndex < rn.snapshot.LastIndex {
+			// the log entry at previousLogIndex is in the snapshot, it is a stale appendEntriesRPC
+			res.Success = true
+			res.Term = rn.term
+			rn.resetTimer()
+			return nil
+		}
 		previousEntry = rn.log.entries[arg.PreviousLogIndex-rn.snapshot.LastIndex]
 	}
 
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
 		rn.log.entries = append(rn.log.entries[:arg.PreviousLogIndex+1-rn.snapshot.LastIndex], arg.Entries...)
+		if rn.unvotingServer {
+			log.Println("the unvoting server", rn.id, "has received the appended", len(arg.Entries))
+			log.Println("the unvoting server", rn.id, "has now", len(rn.log.entries), "entries")
+		}
 		res.Success = true
 
 		// checks for confgiuration changes
@@ -232,13 +246,14 @@ func (rn *RaftNode) InstallSnapshotRPC(arg InstallSnapshotArguments, res *Instal
 		rn.log.entries = rn.log.entries[arg.LastIncludedIndex+1-rn.snapshot.LastIndex:]
 	} else {
 		// the snapshot is fresh, discard all the log entries and update the lastUSNof
-		rn.log.entries = []LogEntry{LogEntry{ // dummy entry
+		dummyEntry := LogEntry{
 			Index:   arg.LastIncludedIndex,
 			Term:    arg.LastIncludedTerm,
 			Type:    NOOPEntry,
 			Command: nil,
 			Client:  "",
-			USN:     -1}}
+			USN:     -1}
+		rn.log.entries = []LogEntry{dummyEntry}
 		rn.lastUSNof = arg.LastUSNof
 	}
 

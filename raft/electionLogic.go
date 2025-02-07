@@ -125,29 +125,41 @@ func (rn *RaftNode) askForVotes() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false
 					for !stopAskingVote {
-						err := peerConnection.Call(
-							"RaftNode.RequestVoteRPC",
-							requestVoteArguments,
-							voteResponse)
+						done := make(chan error, 1)
+						timeout := time.NewTimer(20 * time.Millisecond)
 
-						if err != nil {
-							log.Println("Error sending RequestVoteRPC to", rn.id, ":", err)
-						} else {
-							voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
-							rn.voteResponseCh <- voteResponseWithServerID
-							stopAskingVote = true
-						}
+						go func() {
+							done <- peerConnection.Call(
+								"RaftNode.RequestVoteRPC",
+								requestVoteArguments,
+								voteResponse)
+						}()
 
-						rn.mutex.Lock()
-						if (rn.term > requestVoteArguments.Term || rn.currentLeader != "") && rn.state == Candidate {
-							// stale term or we becomes leader -> stop asking to that node for a vote
-							stopAskingVote = true
-						}
-						rn.mutex.Unlock()
+						select {
+						case err := <-done:
+							if err != nil {
+								log.Println("Error sending RequestVoteRPC to", rn.id, ":", err)
+							} else {
+								voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
+								rn.voteResponseCh <- voteResponseWithServerID
+								stopAskingVote = true
+							}
 
-						if !stopAskingVote {
-							time.Sleep(CandidateTimeout * time.Millisecond) // avoid flooding the nodes
+							rn.mutex.Lock()
+							if (rn.term > requestVoteArguments.Term || rn.currentLeader != "") && rn.state == Candidate {
+								// stale term or we becomes leader -> stop asking to that node for a vote
+								stopAskingVote = true
+							}
+							rn.mutex.Unlock()
+
+							if !stopAskingVote {
+								time.Sleep(CandidateTimeout * time.Millisecond) // avoid flooding the nodes
+							}
+						case <-timeout.C:
+							log.Println("The node", peer, "doesn't responded in time to the RequestVoteRPC made by node", rn.id)
+							// retry
 						}
+						close(done)
 					}
 				}()
 			}

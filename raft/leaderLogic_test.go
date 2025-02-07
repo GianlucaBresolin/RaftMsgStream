@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"log"
 	"testing"
 	"time"
 )
@@ -103,8 +102,6 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 		term:                   1,
 		clientCh:               responseCh,
 	}
-
-	log.Println(rn.peersConnection)
 
 	follower1.startTimer()
 	follower2.startTimer()
