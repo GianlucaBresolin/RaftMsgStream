@@ -111,6 +111,18 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 
 func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestResult) error {
 	rn.mutex.Lock()
+	// check if the request is stale
+	_, okC := rn.lastUSNof[req.Id]
+	if !okC {
+		rn.lastUSNof[req.Id] = -1
+	}
+	if rn.lastUSNof[req.Id] >= req.USN {
+		res.Success = false
+		res.Leader = rn.currentLeader
+		rn.mutex.Unlock()
+		return nil
+	}
+
 	// provide the read-only operation sacrificing linearizability if unvoting server, otherwise
 	// if we are the leader, proceed with the no-op entry to provide the most up-to-date state
 	if !rn.unvotingServer {
@@ -175,6 +187,6 @@ func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestRe
 
 	res.Success = true
 	res.Data = resultData
-	res.Leader = rn.id
+	res.Leader = rn.currentLeader
 	return nil
 }
