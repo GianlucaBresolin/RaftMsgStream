@@ -83,7 +83,7 @@ func NewRaftNode(id ServerID,
 	port Port,
 	peers map[ServerID]Port,
 	unvoting bool) *RaftNode {
-	peers[id] = "" // add self to the peers list
+	peers[id] = port // add self to the peers list
 	configDummySnap := Configuration{
 		OldConfig: nil,
 		NewConfig: peers,

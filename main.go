@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,25 +55,72 @@ func main() {
 	var username string
 	fmt.Scanln(&username)
 
-	// create a new server
-	msgStreamServer1 := server.NewServer("Server1", ":5001", map[raft.ServerID]raft.Port{"Server2": ":5002", "Server3": ":5003"}, false)
-	msgStreamServer2 := server.NewServer("Server2", ":5002", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server3": ":5003"}, false)
-	msgStreamServer3 := server.NewServer("Server3", ":5003", map[raft.ServerID]raft.Port{"Server1": ":5001", "Server2": ":5002"}, false)
+	// ask cluster size
+	fmt.Println("Enter the size of the voting cluster:")
+	var votingCLusterSize int
+	fmt.Scanln(&votingCLusterSize)
 
-	// prepare connections with other servers
-	msgStreamServer1.PrepareConnectionsWithOtherServers()
-	msgStreamServer2.PrepareConnectionsWithOtherServers()
-	msgStreamServer3.PrepareConnectionsWithOtherServers()
+	// ask unvoting nodes size
+	fmt.Println("Enter the size of the unvoting nodes in the cluster:")
+	var unvotingClusterSize int
+	fmt.Scanln(&unvotingClusterSize)
 
-	// run the server
-	go msgStreamServer1.Run()
-	go msgStreamServer2.Run()
-	go msgStreamServer3.Run()
+	cluster := make(map[raft.ServerID]*server.Server)
 
-	user := client.NewClient(username, ":6001", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, messageCh)
+	for i := 1; i <= votingCLusterSize; i++ {
+		otherNodes := make(map[raft.ServerID]raft.Port)
+		for j := 1; j <= votingCLusterSize; j++ {
+			if i != j {
+				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Port(":500" + strconv.Itoa(j))
+			}
+		}
+		cluster[raft.ServerID("node"+strconv.Itoa(i))] = server.NewServer(
+			raft.ServerID("node"+strconv.Itoa(i)),
+			raft.Port(":500"+strconv.Itoa(i)),
+			otherNodes,
+			false,
+		)
+	}
+
+	for _, node := range cluster {
+		node.PrepareConnectionsWithOtherServers()
+	}
+
+	for _, node := range cluster {
+		go node.Run()
+	}
+
+	unvotingNodes := make(map[raft.ServerID]*server.Server)
+
+	for i := votingCLusterSize + 1; i <= (unvotingClusterSize + votingCLusterSize); i++ {
+		otherNodes := make(map[raft.ServerID]raft.Port)
+		for j := 1; j <= votingCLusterSize; j++ {
+			if i != j {
+				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Port(":500" + strconv.Itoa(j))
+			}
+		}
+		unvotingNodes[raft.ServerID("node"+strconv.Itoa(i))] = server.NewServer(
+			raft.ServerID("node"+strconv.Itoa(i)),
+			raft.Port(":500"+strconv.Itoa(i)),
+			otherNodes,
+			true,
+		)
+	}
+
+	for _, node := range unvotingNodes {
+		node.PrepareConnectionsWithOtherServers()
+	}
+
+	serversMap := make(map[string]string)
+	for id := range cluster {
+		serversMap[string(id)] = ":500" + string(id)[4:]
+	}
+
+	// create the user
+	user := client.NewClient(username, ":6001", serversMap, messageCh)
 	user.PrepareConnections()
-
-	fakeUser := client.NewClient("Other User", ":6002", map[string]string{"Server1": ":5001", "Server2": ":5002", "Server3": ":5003"}, fakeMessageCh)
+	// create the fake user
+	fakeUser := client.NewClient("Other User", ":6002", serversMap, fakeMessageCh)
 	fakeUser.PrepareConnections()
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -88,6 +136,7 @@ func main() {
 		}
 	}()
 
+	// start the Gin router
 	router := gin.Default()
 	router.LoadHTMLGlob("templates/*")
 	router.Static("/static", "./static")
@@ -153,7 +202,5 @@ func main() {
 	}()
 
 	for {
-
 	}
-
 }

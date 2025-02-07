@@ -89,8 +89,8 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 	rn.log.entries = append(rn.log.entries, testEntry)
 
 	rn.nextIndex = make(map[ServerID]uint)
-	rn.nextIndex["follower1"] = 2
-	rn.nextIndex["follower2"] = 2
+	rn.nextIndex["follower1"] = 1
+	rn.nextIndex["follower2"] = 1
 
 	rn.pendingCommit = make(map[uint]replicationState)
 	responseCh := make(chan bool, 1)

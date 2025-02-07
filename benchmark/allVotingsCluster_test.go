@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const clusterSize = 20
+const clusterSize = 5
 const userSize = 1
 
 var (
@@ -53,7 +53,7 @@ func setupUsers(users int) {
 	clientsNode = make([]*client.Client, 0, users)
 
 	for i := 1; i <= users; i++ {
-		messageCh = make(chan models.Message)
+		messageCh = make(chan models.Message, 1)
 		clusterNode := make(map[string]string)
 		for id := range cluster {
 			clusterNode[string(id)] = ":500" + string(id)[4:]
@@ -69,8 +69,7 @@ func BenchmarkSingleUserAllVotingsClusterCommitTime(b *testing.B) {
 	once.Do(setupCluster)
 
 	go func() {
-		for {
-			<-clientsNode[0].MessageCh
+		for range clientsNode[0].MessageCh {
 		}
 	}()
 

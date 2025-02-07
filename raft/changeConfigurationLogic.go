@@ -89,6 +89,7 @@ func (rn *RaftNode) prepareCnew() {
 		clientCh:               nil, // no client to notify
 	}
 
+	rn.USN++
 	rn.logEntriesCh <- struct{}{} // trigger log replication
 }
 
@@ -153,7 +154,6 @@ func (rn *RaftNode) applyCommitedConfiguration(command []byte) {
 	}
 
 	_, ok := newConfiguration.NewC[rn.id]
-	log.Println(newConfiguration)
 	if !ok && newConfiguration.OldC == nil && !rn.unvotingServer { // it is a Cnew configuration
 		// we need to shut down the node
 		rn.ShutdownCh <- struct{}{}

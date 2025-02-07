@@ -231,7 +231,9 @@ func (rn *RaftNode) replicateLogToPeers() {
 	rn.mutex.Lock()
 	peers := make(map[ServerID]*rpc.Client)
 	for node, peerConnection := range rn.peersConnection {
-		peers[node] = peerConnection
+		if node != rn.id {
+			peers[node] = peerConnection
+		}
 	}
 	rn.mutex.Unlock()
 
