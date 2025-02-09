@@ -17,26 +17,30 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			// we don't have the log entry at previousLogIndex, we have to send the snapshot
 			successInstallationSnapshot := false
 			var reply InstallSnapshotResult
+			snapshotArguments := &InstallSnapshotArguments{
+				Term:              rn.term,
+				LeaderId:          rn.id,
+				LastIncludedIndex: rn.snapshot.LastIndex,
+				LastIncludedTerm:  rn.snapshot.LastTerm,
+				LastConfig:        rn.snapshot.LastConfig,
+				LastUSNof:         rn.snapshot.LastUSNof,
+				Offset:            0,
+				Data:              rn.snapshot.StateMachineSnap,
+				Done:              true,
+			}
+			rn.mutex.Unlock()
+
 			for !successInstallationSnapshot {
 				doneSnap := make(chan error, 1)
 				timeoutSnap := time.NewTimer(20 * time.Millisecond)
 
 				go func() {
-					doneSnap <- peerConnection.Call("RaftNode.InstallSnapshotRPC", &InstallSnapshotArguments{
-						Term:              rn.term,
-						LeaderId:          rn.id,
-						LastIncludedIndex: rn.snapshot.LastIndex,
-						LastIncludedTerm:  rn.snapshot.LastTerm,
-						LastConfig:        rn.snapshot.LastConfig,
-						LastUSNof:         rn.snapshot.LastUSNof,
-						Offset:            0,
-						Data:              rn.snapshot.StateMachineSnap,
-						Done:              true,
-					}, &reply)
+					doneSnap <- peerConnection.Call("RaftNode.InstallSnapshotRPC", snapshotArguments, &reply)
 				}()
 
 				select {
 				case err := <-doneSnap:
+					rn.mutex.Lock()
 					if err != nil {
 						log.Println("Error sending InstallSnapshotRPC to", rn.id, ":", err)
 					}
@@ -170,7 +174,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 								} else {
 									// we committed Cnew, we have to update the configuration (we have to wait in order to let
 									// the other nodes to know that this configuration is commited)
-									time.AfterFunc(1*time.Second, func() {
+									time.AfterFunc(100*time.Millisecond, func() {
 										rn.mutex.Lock()
 										rn.peers = Configuration{
 											OldConfig: nil,
