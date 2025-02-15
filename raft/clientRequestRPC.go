@@ -36,7 +36,7 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 		for _, entry := range rn.log.entries[rn.log.lastCommitedIndex+1:] {
 			if entry.Client == req.Id {
 				// we already have the request in the log, discard it
-				res.Success = false
+				res.Success = true
 				res.Leader = rn.id
 				rn.mutex.Unlock()
 				return nil
@@ -98,6 +98,12 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 
 			res.Success = committed
 			res.Leader = rn.id
+			return nil
+		} else {
+			// we already have the request in the log, discard it
+			res.Success = true
+			res.Leader = rn.id
+			rn.mutex.Unlock()
 			return nil
 		}
 	}
