@@ -86,7 +86,7 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		_, okU := m.groups[command.Group].users[command.Username]
 		if !okU {
 			// establish a connection with the user
-			client, err := rpc.Dial("tcp", "localhost"+string(command.Userport))
+			client, err := rpc.DialHTTP("tcp", "localhost"+string(command.Userport))
 			if err != nil {
 				log.Printf("Failed to dial: %v", err)
 			}
@@ -311,7 +311,7 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				}
 				for _, user := range groupProto.Users {
 					// establish a connection with the user
-					client, err := rpc.Dial("tcp", "localhost"+user.Port)
+					client, err := rpc.DialHTTP("tcp", "localhost"+user.Port)
 					if err != nil {
 						log.Printf("Failed to dial: %v", err)
 					}

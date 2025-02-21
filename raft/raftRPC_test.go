@@ -1,12 +1,14 @@
 package raft
 
 import (
+	"net/rpc"
 	"testing"
 	"time"
 )
 
 func TestRequestVoteRPCSuccess(t *testing.T) {
-	nodeCandidate := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	server := rpc.NewServer()
+	nodeCandidate := NewRaftNode("Server1", ":5001", server, map[ServerID]Port{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 
@@ -19,7 +21,8 @@ func TestRequestVoteRPCSuccess(t *testing.T) {
 
 	var res RequestVoteResult
 
-	otherNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	otherServer := rpc.NewServer()
+	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Port{"Server1": ":5001"}, false)
 	otherNode.term = 0
 	otherNode.state = Follower
 	otherNode.myVote = ""
@@ -47,7 +50,8 @@ func TestRequestVoteRPCSuccess(t *testing.T) {
 }
 
 func TestRequestVoteRPCStaleTerm(t *testing.T) {
-	nodeCandidate := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	serverCandidate := rpc.NewServer()
+	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Port{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 
@@ -60,7 +64,8 @@ func TestRequestVoteRPCStaleTerm(t *testing.T) {
 
 	var res RequestVoteResult
 
-	otherNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	otherServer := rpc.NewServer()
+	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Port{"Server1": ":5001"}, false)
 	otherNode.term = 0
 	otherNode.state = Follower
 	otherNode.myVote = ""
@@ -88,7 +93,8 @@ func TestRequestVoteRPCStaleTerm(t *testing.T) {
 }
 
 func TestRequestVoteRPCAlreadyVoted(t *testing.T) {
-	nodeCandidate := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	serverCandidate := rpc.NewServer()
+	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Port{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 	nodeCandidate.myVote = "Server2"

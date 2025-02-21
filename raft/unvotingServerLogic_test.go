@@ -1,15 +1,20 @@
 package raft
 
 import (
+	"net/rpc"
 	"testing"
 )
 
 func TestUnvotingServerLogic(t *testing.T) {
-	node1 := NewRaftNode("node1", ":5001", map[ServerID]Port{"node2": ":5002", "node3": ":5003"}, false)
-	node2 := NewRaftNode("node2", ":5002", map[ServerID]Port{"node1": ":5001", "node3": ":5003"}, false)
-	node3 := NewRaftNode("node3", ":5003", map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, false)
+	server1 := rpc.NewServer()
+	node1 := NewRaftNode("node1", ":5001", server1, map[ServerID]Port{"node2": ":5002", "node3": ":5003"}, false)
+	server2 := rpc.NewServer()
+	node2 := NewRaftNode("node2", ":5002", server2, map[ServerID]Port{"node1": ":5001", "node3": ":5003"}, false)
+	server3 := rpc.NewServer()
+	node3 := NewRaftNode("node3", ":5003", server3, map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, false)
 
-	unvotingNode := NewRaftNode("node4", ":5005", map[ServerID]Port{"node1": ":5001", "node2": ":5002", "node3": ":5003"}, true)
+	server4 := rpc.NewServer()
+	unvotingNode := NewRaftNode("node4", ":5005", server4, map[ServerID]Port{"node1": ":5001", "node2": ":5002", "node3": ":5003"}, true)
 
 	node1.PrepareConnections()
 	node2.PrepareConnections()

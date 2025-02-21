@@ -28,7 +28,7 @@ func (rn *RaftNode) AddUnvotingServerRPC(req UnvotingServerArguments, res *Unvot
 	}
 
 	// add the connection to the unvotingServer
-	client, err := rpc.Dial("tcp", "localhost"+string(req.Port))
+	client, err := rpc.DialHTTP("tcp", "localhost"+string(req.Port))
 	if err != nil {
 		log.Printf("Failed to dial %s: %v", req.ServerID, err)
 	} else {

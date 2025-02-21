@@ -1,17 +1,8 @@
 package raft
 
-type ClientRequestArguments struct {
-	Command []byte
-	Type    uint
-	Id      string
-	USN     int // Unique Sequence Number
-}
-
-type ClientRequestResult struct {
-	Success bool
-	Data    []byte
-	Leader  ServerID
-}
+import (
+	"RaftMsgStream/models"
+)
 
 type replicationState struct {
 	replicationCounterOldC uint
@@ -22,7 +13,7 @@ type replicationState struct {
 	clientCh               chan bool
 }
 
-func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequestResult) error {
+func (rn *RaftNode) ActionRequest(req models.ClientRequestArguments, res *models.ClientRequestResult) {
 	rn.mutex.Lock()
 
 	if rn.state == Leader {
@@ -37,9 +28,9 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 			if entry.Client == req.Id {
 				// we already have the request in the log, discard it
 				res.Success = true
-				res.Leader = rn.id
+				res.Leader = string(rn.id)
 				rn.mutex.Unlock()
-				return nil
+				return
 			}
 		}
 
@@ -50,9 +41,9 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 				if rn.peers.OldConfig != nil {
 					// discard the request
 					res.Success = false
-					res.Leader = rn.id
+					res.Leader = string(rn.id)
 					rn.mutex.Unlock()
-					return nil
+					return
 				}
 				// prepare Cold,new
 				command = rn.prepareCold_new(req.Command)
@@ -97,25 +88,24 @@ func (rn *RaftNode) ActionRequestRPC(req ClientRequestArguments, res *ClientRequ
 			committed := <-clientCh
 
 			res.Success = committed
-			res.Leader = rn.id
-			return nil
+			res.Leader = string(rn.id)
+			return
 		} else {
 			// we already have the request in the log, discard it
 			res.Success = true
-			res.Leader = rn.id
+			res.Leader = string(rn.id)
 			rn.mutex.Unlock()
-			return nil
+			return
 		}
 	}
 
 	// redirect to leader if not leader or stale request
 	res.Success = false
-	res.Leader = rn.currentLeader
+	res.Leader = string(rn.currentLeader)
 	rn.mutex.Unlock()
-	return nil
 }
 
-func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestResult) error {
+func (rn *RaftNode) GetState(req models.ClientRequestArguments, res *models.ClientRequestResult) {
 	rn.mutex.Lock()
 	// check if the request is stale
 	_, okC := rn.lastUSNof[req.Id]
@@ -124,9 +114,9 @@ func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestRe
 	}
 	if rn.lastUSNof[req.Id] >= req.USN {
 		res.Success = false
-		res.Leader = rn.currentLeader
+		res.Leader = string(rn.currentLeader)
 		rn.mutex.Unlock()
-		return nil
+		return
 	}
 
 	// provide the read-only operation sacrificing linearizability if unvoting server, otherwise
@@ -134,9 +124,9 @@ func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestRe
 	if !rn.unvotingServer {
 		if rn.state != Leader {
 			res.Success = false
-			res.Leader = rn.currentLeader
+			res.Leader = string(rn.currentLeader)
 			rn.mutex.Unlock()
-			return nil
+			return
 		}
 
 		// append a NOOP entry to the log
@@ -178,8 +168,8 @@ func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestRe
 		close(nodeCh)
 		if !committed {
 			res.Success = false
-			res.Leader = rn.id
-			return nil
+			res.Leader = string(rn.id)
+			return
 		}
 		rn.mutex.Lock()
 	}
@@ -193,6 +183,5 @@ func (rn *RaftNode) GetStateRPC(req ClientRequestArguments, res *ClientRequestRe
 
 	res.Success = true
 	res.Data = resultData
-	res.Leader = rn.currentLeader
-	return nil
+	res.Leader = string(rn.currentLeader)
 }

@@ -5,6 +5,7 @@ import (
 	"RaftMsgStream/raft"
 	"encoding/json"
 	"log"
+	"net/rpc"
 	"time"
 )
 
@@ -62,27 +63,24 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 	}
 
 	// call the getStateRPC on the server
-	getStateResonse := &raft.ClientRequestResult{}
+	getStateResonse := &models.ClientRequestResult{}
 	failRead := false
 	for !failRead {
-		done := make(chan error, 1)
+		done := make(chan *rpc.Call, 1)
 		timeout := time.NewTimer(20 * time.Millisecond)
 
-		go func() {
-			log.Println("the client is reading the state from the server", args.Server)
-			done <- c.Connections[args.Server].Call("RaftNode.GetStateRPC",
-				raft.ClientRequestArguments{
-					Command: command,
-					Type:    raft.NOOPEntry,
-					Id:      c.Id,
-					USN:     c.USN,
-				}, getStateResonse)
-		}()
+		c.Connections[args.Server].Go("Server.GetStateRPC",
+			models.ClientRequestArguments{
+				Command: command,
+				Type:    raft.NOOPEntry,
+				Id:      c.Id,
+				USN:     c.USN,
+			}, getStateResonse, done)
 
 		select {
-		case err := <-done:
-			if err != nil {
-				log.Printf("Failed to call GetStateRPC: %v", err)
+		case call := <-done:
+			if call.Error != nil {
+				log.Printf("Failed to call GetStateRPC: %v", call.Error)
 				reply.Success = false
 				return nil
 			}

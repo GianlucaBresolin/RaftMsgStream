@@ -4,6 +4,7 @@ import (
 	"RaftMsgStream/models"
 	"log"
 	"net"
+	"net/http"
 	"net/rpc"
 	"sync"
 )
@@ -28,22 +29,16 @@ func (c *Client) registerClient() {
 		log.Fatalf("Failed to register client %s: %v", c.Id, err)
 	}
 
+	mux := http.NewServeMux()
+	mux.Handle(rpc.DefaultRPCPath, server)
+
 	listener, err := net.Listen("tcp", c.Port)
 	if err != nil {
 		log.Fatalf("Failed to listen on port %s: %v", c.Port, err)
 	}
 	log.Printf("Client %s is listening on %s\n", c.Id, c.Port)
 
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				log.Printf("Error accepting connection: %v", err)
-				continue
-			}
-			go server.ServeConn(conn)
-		}
-	}()
+	go http.Serve(listener, mux)
 }
 
 func NewClient(id string, port string, servers map[string]string, messageCh chan models.Message) *Client {
@@ -65,7 +60,7 @@ func NewClient(id string, port string, servers map[string]string, messageCh chan
 
 func (c *Client) PrepareConnections() {
 	for server, port := range c.Servers {
-		connection, err := rpc.Dial("tcp", "localhost"+port)
+		connection, err := rpc.DialHTTP("tcp", "localhost"+port)
 		if err != nil {
 			log.Printf("Failed to dial %s: %v", server, err)
 		} else {
@@ -81,7 +76,7 @@ func (c *Client) AddUnvotingServer(server string, port string) {
 
 	c.UnvotingServers[server] = port
 	// establish connection
-	connection, err := rpc.Dial("tcp", "localhost"+port)
+	connection, err := rpc.DialHTTP("tcp", "localhost"+port)
 	if err != nil {
 		log.Printf("Failed to dial %s: %v", server, err)
 	} else {

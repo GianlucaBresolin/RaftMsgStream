@@ -81,6 +81,7 @@ type RaftNode struct {
 
 func NewRaftNode(id ServerID,
 	port Port,
+	server *rpc.Server,
 	peers map[ServerID]Port,
 	unvoting bool) *RaftNode {
 	peers[id] = port // add self to the peers list
@@ -143,7 +144,7 @@ func NewRaftNode(id ServerID,
 		unvotingServer:  unvoting,
 		unvotingServers: make(map[ServerID]string),
 	}
-	raftNode.registerNode()
+	raftNode.registerNode(server)
 	return raftNode
 }
 

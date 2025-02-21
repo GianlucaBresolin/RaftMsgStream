@@ -35,7 +35,7 @@ func (rn *RaftNode) prepareCold_new(command []byte) []byte {
 			if !okInUnv {
 				// (otherwise we already have a connection to this node in the unvoting servers)
 				// add the connection
-				client, err := rpc.Dial("tcp", "localhost"+string(port))
+				client, err := rpc.DialHTTP("tcp", "localhost"+string(port))
 				if err != nil {
 					log.Printf("Failed to dial %s: %v", peer, err)
 				} else {
@@ -131,7 +131,7 @@ func (rn *RaftNode) applyConfiguration(command []byte) {
 				if !okInUnv {
 					// (otherwise we already have a connection to this node in the unvoting servers)
 					// add the connection
-					client, err := rpc.Dial("tcp", "localhost"+string(port))
+					client, err := rpc.DialHTTP("tcp", "localhost"+string(port))
 					if err != nil {
 						log.Printf("Failed to dial %s: %v", peer, err)
 					} else {
