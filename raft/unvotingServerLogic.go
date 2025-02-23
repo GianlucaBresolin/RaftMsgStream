@@ -68,17 +68,15 @@ func (rn *RaftNode) connectAsUnvotingNode() {
 	}
 
 	for !reply.Success {
-		done := make(chan error, 1)
+		done := make(chan *rpc.Call, 1)
 		timeout := time.NewTimer(20 * time.Millisecond)
 
-		go func() {
-			done <- rn.peersConnection[leaderNode].Call("RaftNode.AddUnvotingServerRPC", args, &reply)
-		}()
+		rn.peersConnection[leaderNode].Go("RaftNode.AddUnvotingServerRPC", args, &reply, done)
 
 		select {
-		case err := <-done:
-			if err != nil {
-				log.Printf("Failed to add unvoting server %s: %v", rn.id, err)
+		case call := <-done:
+			if call.Error != nil {
+				log.Printf("Failed to add unvoting server %s: %v", rn.id, call.Error)
 				return
 			}
 			if reply.CurrentLeader != "" {
@@ -152,17 +150,15 @@ func (rn *RaftNode) disconnectAsUnvotingNode() {
 	}
 
 	for !reply.Success {
-		done := make(chan error, 1)
+		done := make(chan *rpc.Call, 1)
 		timeout := time.NewTimer(20 * time.Millisecond)
 
-		go func() {
-			done <- rn.peersConnection[leaderNode].Call("RaftNode.RemoveUnvotingServerRPC", args, &reply)
-		}()
+		rn.peersConnection[leaderNode].Go("RaftNode.RemoveUnvotingServerRPC", args, &reply, done)
 
 		select {
-		case err := <-done:
-			if err != nil {
-				log.Printf("Failed to remove unvoting server %s: %v", rn.id, err)
+		case call := <-done:
+			if call.Error != nil {
+				log.Printf("Failed to remove unvoting server %s: %v", rn.id, call.Error)
 				return
 			}
 			leaderNode = reply.CurrentLeader

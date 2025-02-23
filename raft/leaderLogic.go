@@ -31,18 +31,16 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			rn.mutex.Unlock()
 
 			for !successInstallationSnapshot {
-				doneSnap := make(chan error, 1)
+				doneSnap := make(chan *rpc.Call, 1)
 				timeoutSnap := time.NewTimer(20 * time.Millisecond)
 
-				go func() {
-					doneSnap <- peerConnection.Call("RaftNode.InstallSnapshotRPC", snapshotArguments, &reply)
-				}()
+				peerConnection.Go("RaftNode.InstallSnapshotRPC", snapshotArguments, &reply, doneSnap)
 
 				select {
-				case err := <-doneSnap:
+				case call := <-doneSnap:
 					rn.mutex.Lock()
-					if err != nil {
-						log.Println("Error sending InstallSnapshotRPC to", rn.id, ":", err)
+					if call.Error != nil {
+						log.Println("Error sending InstallSnapshotRPC to", rn.id, ":", call.Error)
 					}
 					if reply.Success {
 						successInstallationSnapshot = true
@@ -77,20 +75,19 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 		failedReplicationRequest := false
 		res := &AppendEntriesResult{}
 		for !failedReplicationRequest {
-			done := make(chan error, 1)
+			done := make(chan *rpc.Call, 1)
 			timeout := time.NewTimer(20 * time.Millisecond)
 
-			go func() {
-				done <- peerConnection.Call(
-					"RaftNode.AppendEntriesRPC",
-					&arg,
-					res)
-			}()
+			peerConnection.Go(
+				"RaftNode.AppendEntriesRPC",
+				&arg,
+				res,
+				done)
 
 			select {
-			case err := <-done:
-				if err != nil {
-					log.Println("Error sending AppendEntriesRPC to", rn.id, ":", err)
+			case call := <-done:
+				if call.Error != nil {
+					log.Println("Error sending AppendEntriesRPC to", rn.id, ":", call.Error)
 					log.Println("Retrying...")
 					continue
 				}

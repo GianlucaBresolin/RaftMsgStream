@@ -108,22 +108,21 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 			success := false
 			updateResult := &client.UpdateResult{}
 			for !success {
-				done := make(chan error, 1)
+				done := make(chan *rpc.Call, 1)
 				timeout := time.NewTimer(20 * time.Millisecond)
 
-				go func() {
-					done <- user.connection.Call("Client.UpdateRPC",
-						client.UpdateARgs{
-							Server:    m.serverId,
-							Group:     command.Group,
-							RequestId: m.requestID,
-						}, updateResult)
-				}()
+				user.connection.Go("Client.UpdateRPC",
+					client.UpdateARgs{
+						Server:    m.serverId,
+						Group:     command.Group,
+						RequestId: m.requestID,
+					}, updateResult,
+					done)
 
 				select {
-				case err := <-done:
-					if err != nil {
-						log.Printf("Failed to call Update: %v", err)
+				case call := <-done:
+					if call.Error != nil {
+						log.Printf("Failed to call Update: %v", call.Error)
 					}
 					success = updateResult.Success
 				case <-timeout.C:
@@ -140,22 +139,21 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		updateResult := &client.UpdateResult{}
 		success := false
 		for !success {
-			done := make(chan error, 1)
+			done := make(chan *rpc.Call, 1)
 			timeout := time.NewTimer(20 * time.Millisecond)
 
-			go func() {
-				done <- connectionUser.Call("Client.UpdateRPC",
-					client.UpdateARgs{
-						Server:    m.serverId,
-						Group:     command.Group,
-						RequestId: m.requestID,
-					}, updateResult)
-			}()
+			connectionUser.Go("Client.UpdateRPC",
+				client.UpdateARgs{
+					Server:    m.serverId,
+					Group:     command.Group,
+					RequestId: m.requestID,
+				}, updateResult,
+				done)
 
 			select {
-			case err := <-done:
-				if err != nil {
-					log.Printf("Failed to call Update: %v", err)
+			case call := <-done:
+				if call.Error != nil {
+					log.Printf("Failed to call Update: %v", call.Error)
 				}
 				success = updateResult.Success
 			case <-timeout.C:

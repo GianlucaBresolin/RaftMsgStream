@@ -3,6 +3,7 @@ package raft
 import (
 	"encoding/json"
 	"log"
+	"net/rpc"
 	"time"
 )
 
@@ -125,20 +126,19 @@ func (rn *RaftNode) askForVotes() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false
 					for !stopAskingVote {
-						done := make(chan error, 1)
+						done := make(chan *rpc.Call, 1)
 						timeout := time.NewTimer(20 * time.Millisecond)
 
-						go func() {
-							done <- peerConnection.Call(
-								"RaftNode.RequestVoteRPC",
-								requestVoteArguments,
-								voteResponse)
-						}()
+						peerConnection.Go(
+							"RaftNode.RequestVoteRPC",
+							requestVoteArguments,
+							voteResponse,
+							done)
 
 						select {
-						case err := <-done:
-							if err != nil {
-								log.Println("Error sending RequestVoteRPC to", rn.id, ":", err)
+						case call := <-done:
+							if call.Error != nil {
+								log.Println("Error sending RequestVoteRPC to", rn.id, ":", call.Error)
 							} else {
 								voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
 								rn.voteResponseCh <- voteResponseWithServerID
