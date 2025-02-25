@@ -28,7 +28,7 @@ func (c *Client) SendMessage(group string, msg string) {
 	var reply models.ClientRequestResult
 
 	var leader string
-	for server, _ := range c.Servers {
+	for server := range c.Servers {
 		leader = server
 		break
 	}
