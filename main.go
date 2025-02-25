@@ -119,11 +119,12 @@ func main() {
 	// create the user
 	user := client.NewClient(username, ":6001", serversMap, messageCh)
 	user.PrepareConnections()
+
 	// create the fake user
 	fakeUser := client.NewClient("Other User", ":6002", serversMap, fakeMessageCh)
 	fakeUser.PrepareConnections()
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
 		for {

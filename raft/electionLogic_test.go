@@ -8,7 +8,8 @@ import (
 )
 
 func TestStartElection(t *testing.T) {
-	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
+	server := rpc.NewServer()
+	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, server, false)
 	raftNode.term = 1
 
 	raftNode.startElection()

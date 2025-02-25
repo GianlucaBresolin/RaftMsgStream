@@ -126,10 +126,6 @@ func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntr
 
 	if exist && previousEntry.Term == arg.PreviousLogTerm {
 		rn.log.entries = append(rn.log.entries[:arg.PreviousLogIndex+1-rn.snapshot.LastIndex], arg.Entries...)
-		if rn.unvotingServer {
-			log.Println("the unvoting server", rn.id, "has received the appended", len(arg.Entries))
-			log.Println("the unvoting server", rn.id, "has now", len(rn.log.entries), "entries")
-		}
 		res.Success = true
 
 		// checks for confgiuration changes
@@ -242,8 +238,10 @@ func (rn *RaftNode) InstallSnapshotRPC(arg InstallSnapshotArguments, res *Instal
 	// arg.Term == rn.term
 	// update the entries in the log
 	if rn.lastGlobalCommitedIndex() > arg.LastIncludedIndex {
-		// the snapshot is stale, we keep the log entries after the snapshot
-		rn.log.entries = rn.log.entries[arg.LastIncludedIndex+1-rn.snapshot.LastIndex:]
+		// the snapshot is stale, we keep the log entries after the snapshot, if any
+		if len(rn.log.entries) > 1 {
+			rn.log.entries = rn.log.entries[arg.LastIncludedIndex+1-rn.snapshot.LastIndex:]
+		}
 	} else {
 		// the snapshot is fresh, discard all the log entries and update the lastUSNof
 		dummyEntry := LogEntry{

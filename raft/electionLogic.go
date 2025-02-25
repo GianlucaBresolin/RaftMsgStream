@@ -94,6 +94,51 @@ func (rn *RaftNode) winElection() {
 		}
 	}
 
+	// append a NOOP entry to the log to provide the most up-to-date state
+	logEntry := LogEntry{
+		Index:   rn.lastGlobalIndex() + 1,
+		Term:    rn.term,
+		Command: nil,
+		Type:    NOOPEntry,
+		Client:  string(rn.id),
+		USN:     rn.USN,
+	}
+	rn.log.entries = append(rn.log.entries, logEntry)
+	nodeCh := make(chan bool)
+
+	commitedOldC := false
+	if rn.peers.OldConfig == nil {
+		commitedOldC = true
+	}
+
+	_, ok := rn.peers.NewConfig[rn.id]
+	replicationCounterNewC := 0
+	if ok {
+		replicationCounterNewC = 1 // leader already replicated
+	}
+
+	rn.pendingCommit[logEntry.Index] = replicationState{
+		replicationCounterOldC: 1, // leader already replicated
+		replicationCounterNewC: uint(replicationCounterNewC),
+		committedOldC:          commitedOldC,
+		committedNewC:          false,
+		term:                   rn.term,
+		clientCh:               nodeCh,
+	}
+
+	go func() {
+		committed := <-nodeCh
+		rn.mutex.Lock()
+		close(nodeCh)
+		if !committed {
+			log.Println("Error committing NOOP entry")
+			rn.revertToFollower()
+		} else {
+			rn.committedNooP = true
+		}
+		rn.mutex.Unlock()
+	}()
+
 	go rn.handleLeadership()
 	rn.firstHeartbeatCh <- struct{}{}
 	log.Println("Node", rn.id, "won the election for term", rn.term)
@@ -103,6 +148,7 @@ func (rn *RaftNode) revertToFollower() {
 	if rn.state == Leader {
 		rn.leaderCh <- true // stop handling leadership
 		rn.nextIndex = nil
+		rn.committedNooP = false
 	}
 	rn.state = Follower
 	rn.currentLeader = ""

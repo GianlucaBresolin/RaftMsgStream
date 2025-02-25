@@ -1,17 +1,19 @@
 package raft
 
 import (
+	"RaftMsgStream/models"
+	"net/rpc"
 	"testing"
 )
 
 func TestClientRequestArguments(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientRequestArguments
 	req.Command = []byte("test")
 	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientRequestResult
 
 	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
 	leaderNode.state = Leader
@@ -36,13 +38,13 @@ func TestClientRequestArguments(t *testing.T) {
 }
 
 func TestClientRequestStaleUSN(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientRequestArguments
 	req.Command = []byte("test")
 	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientRequestResult
 
 	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
 	leaderNode.state = Leader
@@ -63,15 +65,16 @@ func TestClientRequestStaleUSN(t *testing.T) {
 }
 
 func TestGetStateRPCVotingServer(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientRequestArguments
 	req.Command = []byte("test")
 	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientRequestResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
+	server := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", ":5001", server, map[ServerID]Port{}, false)
 	leaderNode.state = Leader
 	leaderNode.lastUSNof = make(map[string]int)
 	leaderNode.lastUSNof["test"] = 0
@@ -90,10 +93,7 @@ func TestGetStateRPCVotingServer(t *testing.T) {
 		leaderNode.ReadStateResultCh <- []byte("test")
 	}()
 
-	err := leaderNode.GetStateRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call GetStateRPC: %v", err)
-	}
+	leaderNode.GetState(req, &res)
 	if !res.Success {
 		t.Errorf("Expected success, got %v", res.Success)
 	}

@@ -7,12 +7,13 @@ import (
 	"time"
 )
 
-func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Client) {
+func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Client) bool {
 	// replicate log entry
 	rn.mutex.Lock()
 	if rn.state == Leader {
 		// build info for consistency check
 		previousLogIndex := rn.nextIndex[node] - 1
+
 		if previousLogIndex < rn.snapshot.LastIndex {
 			// we don't have the log entry at previousLogIndex, we have to send the snapshot
 			successInstallationSnapshot := false
@@ -38,7 +39,6 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 
 				select {
 				case call := <-doneSnap:
-					rn.mutex.Lock()
 					if call.Error != nil {
 						log.Println("Error sending InstallSnapshotRPC to", rn.id, ":", call.Error)
 					}
@@ -50,6 +50,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 				}
 			}
 			log.Println("Snapshot installed on", node)
+			rn.mutex.Lock()
 			rn.nextIndex[node] = rn.snapshot.LastIndex + 1
 			previousLogIndex = rn.snapshot.LastIndex
 		}
@@ -70,6 +71,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			Entries:          logEntriesToReplicate,
 			LeaderCommit:     rn.lastGlobalCommitedIndex(),
 		}
+
 		rn.mutex.Unlock()
 
 		failedReplicationRequest := false
@@ -98,7 +100,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 					rn.revertToFollower()
 					rn.term = res.Term
 					rn.mutex.Unlock()
-					return
+					return false
 				}
 
 				if res.Success {
@@ -191,20 +193,22 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 					}
 
 					rn.mutex.Unlock()
+					return true
 				} else {
-					// inconsistent log entry in the follower
+					// inconsistent log entry in the follower, we have to decrement the nextIndex
 					log.Println("inconsistency founded in " + node)
-					rn.nextIndex[node]--
+					rn.nextIndex[node] = previousLogIndex
 					rn.mutex.Unlock()
 					rn.handleReplicationLog(node, peerConnection)
+					return false
 				}
 			case <-timeout.C:
 				log.Println("The node", node, "doesn't responded in time to the AppendEntriesRPC made by node", rn.id, "retrying...")
 			}
 		}
-	} else {
-		rn.mutex.Unlock()
 	}
+	rn.mutex.Unlock()
+	return false
 }
 
 func (rn *RaftNode) handleLeadership() {

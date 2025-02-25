@@ -67,7 +67,7 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 	failRead := false
 	for !failRead {
 		done := make(chan *rpc.Call, 1)
-		timeout := time.NewTimer(20 * time.Millisecond)
+		timeout := time.NewTimer(200 * time.Millisecond)
 
 		c.Connections[args.Server].Go("Server.GetStateRPC",
 			models.ClientRequestArguments{
@@ -86,7 +86,7 @@ func (c *Client) UpdateRPC(args UpdateARgs, reply *UpdateResult) error {
 			}
 			if !getStateResonse.Success {
 				// the read failed, retry
-				log.Printf("Failed to read from server %s, retrying with the new leader", args.Server)
+				log.Printf("Failed to read from server %s, retrying with the leader", args.Server)
 				args.Server = string(getStateResonse.Leader)
 				continue
 			}

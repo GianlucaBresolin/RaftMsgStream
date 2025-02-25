@@ -2,6 +2,9 @@ package raft
 
 import (
 	"RaftMsgStream/models"
+	"log"
+	"sync"
+	"time"
 )
 
 type replicationState struct {
@@ -120,7 +123,8 @@ func (rn *RaftNode) GetState(req models.ClientRequestArguments, res *models.Clie
 	}
 
 	// provide the read-only operation sacrificing linearizability if unvoting server, otherwise
-	// if we are the leader, proceed with the no-op entry to provide the most up-to-date state
+	// if we are the leader, proceed with exchaging heartbeats with the majority of the cluster
+	// to provide the most up-to-date state
 	if !rn.unvotingServer {
 		if rn.state != Leader {
 			res.Success = false
@@ -129,47 +133,69 @@ func (rn *RaftNode) GetState(req models.ClientRequestArguments, res *models.Clie
 			return
 		}
 
-		// append a NOOP entry to the log
-		logEntry := LogEntry{
-			Index:   rn.lastGlobalIndex() + 1,
-			Term:    rn.term,
-			Command: nil,
-			Type:    NOOPEntry,
-			Client:  string(rn.id),
-			USN:     rn.USN,
-		}
-		rn.log.entries = append(rn.log.entries, logEntry)
-		nodeCh := make(chan bool)
-
-		commitedOldC := false
-		if rn.peers.OldConfig == nil {
-			commitedOldC = true
-		}
-
-		_, ok := rn.peers.NewConfig[rn.id]
-		replicationCounterNewC := 0
-		if ok {
-			replicationCounterNewC = 1 // leader already replicated
-		}
-
-		rn.pendingCommit[logEntry.Index] = replicationState{
-			replicationCounterOldC: 1, // leader already replicated
-			replicationCounterNewC: uint(replicationCounterNewC),
-			committedOldC:          commitedOldC,
-			committedNewC:          false,
-			term:                   rn.term,
-			clientCh:               nodeCh,
-		}
-
-		rn.mutex.Unlock()
-		rn.logEntriesCh <- struct{}{} // trigger log replication
-
-		committed := <-nodeCh
-		close(nodeCh)
-		if !committed {
+		// check if we have the NOOP entry committed to provide that, as a leader, we have the latest information
+		// on which entries are committed
+		if !rn.committedNooP {
 			res.Success = false
-			res.Leader = string(rn.id)
+			res.Leader = string(rn.currentLeader)
+			rn.mutex.Unlock()
 			return
+		}
+
+		// exchange heartbeats with the majority of the cluster to check if we were deposed or not
+		autorizedReadCh := make(chan struct{})
+		// check if we have the majority of the old cluster (if present) to respond
+		heartbeatCounterOld := 0
+		if rn.peers.OldConfig != nil {
+			heartbeatCounterOld = 1 // leader already responded if it is in the old configuration
+		}
+		// check if we have the majority of the new cluster to respond
+		heartbeatCounterNew := 0
+		if _, ok := rn.peers.NewConfig[rn.id]; ok {
+			heartbeatCounterNew = 1 // leader already responded if it is in the new configuration
+		}
+		autorizedRead := false
+		autorizedReadLock := sync.Mutex{}
+		authorizedReadTimeout := time.After(100 * time.Millisecond)
+
+		for node, peerConnection := range rn.peersConnection {
+			_, okOld := rn.peers.OldConfig[node]
+			_, okNew := rn.peers.NewConfig[node]
+			if node == rn.id || (!okOld && !okNew) {
+				// skip the current node (leader) and the unvoting servers
+				continue
+			}
+			go func() {
+				success := rn.handleReplicationLog(node, peerConnection)
+				autorizedReadLock.Lock()
+				if success {
+					if okOld {
+						heartbeatCounterOld++
+					}
+					if okNew {
+						heartbeatCounterNew++
+					}
+				}
+				if (rn.peers.OldConfig == nil || heartbeatCounterOld > len(rn.peers.OldConfig)/2) && heartbeatCounterNew > len(rn.peers.NewConfig)/2 && !autorizedRead {
+					autorizedRead = true // to avoid flooding the channel
+					autorizedReadCh <- struct{}{}
+				}
+				autorizedReadLock.Unlock()
+			}()
+		}
+		rn.mutex.Unlock() // unlock to enable the exchange of heartbeats
+
+		select {
+		case <-authorizedReadTimeout:
+			// we did not get the majority of the cluster to respond
+			res.Success = false
+			res.Leader = string(rn.currentLeader)
+			log.Println("Node", rn.id, "did not get the majority of the cluster to respond or the timeout expired")
+			rn.mutex.Unlock()
+			return
+		case <-autorizedReadCh:
+			// we got the majority of the cluster to respond, proceed with the read
+			log.Println("Node", rn.id, "got the majority of the cluster to respond")
 		}
 		rn.mutex.Lock()
 	}

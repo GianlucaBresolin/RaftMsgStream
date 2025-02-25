@@ -2,11 +2,13 @@ package raft
 
 import (
 	"encoding/json"
+	"net/rpc"
 	"testing"
 )
 
 func TestPrepareCold_new(t *testing.T) {
-	node := NewRaftNode("node1", ":5001", map[ServerID]Port{"follower": ":5002"}, false)
+	server := rpc.NewServer()
+	node := NewRaftNode("node1", ":5001", server, map[ServerID]Port{"follower": ":5002"}, false)
 
 	command := []byte(`{"NewConfig": {"follower": ":5002"}}`)
 	result := node.prepareCold_new(command)
@@ -17,7 +19,8 @@ func TestPrepareCold_new(t *testing.T) {
 }
 
 func TestPrepareCnew(t *testing.T) {
-	node := NewRaftNode("node1", ":5001", map[ServerID]Port{"follower": ":5002"}, false)
+	server := rpc.NewServer()
+	node := NewRaftNode("node1", ":5001", server, map[ServerID]Port{"follower": ":5002"}, false)
 	node.peers = Configuration{
 		OldConfig: map[ServerID]Port{"follower": ":5002", "node1": ":5001"},
 		NewConfig: map[ServerID]Port{"follower": ":5002"},
@@ -35,13 +38,16 @@ func TestPrepareCnew(t *testing.T) {
 }
 
 func TestApplyConfiguration(t *testing.T) {
-	node1 := NewRaftNode("node1", ":5001", map[ServerID]Port{"node2": ":5002"}, false)
-	node2 := NewRaftNode("node2", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
+	server1 := rpc.NewServer()
+	node1 := NewRaftNode("node1", ":5001", server1, map[ServerID]Port{"node2": ":5002"}, false)
+	server2 := rpc.NewServer()
+	node2 := NewRaftNode("node2", ":5002", server2, map[ServerID]Port{"node1": ":5001"}, false)
 
 	node1.PrepareConnections()
 	node2.PrepareConnections()
 
-	node3 := NewRaftNode("node3", ":5003", map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, true)
+	server3 := rpc.NewServer()
+	node3 := NewRaftNode("node3", ":5003", server3, map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, true)
 	node3.PrepareConnections()
 
 	config := Configuration{
@@ -63,13 +69,16 @@ func TestApplyConfiguration(t *testing.T) {
 }
 
 func TestApplyCommitedConfigurationShutDown(t *testing.T) {
-	node1 := NewRaftNode("node1", ":5001", map[ServerID]Port{"node2": ":5002"}, false)
-	node2 := NewRaftNode("node2", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
+	server1 := rpc.NewServer()
+	node1 := NewRaftNode("node1", ":5001", server1, map[ServerID]Port{"node2": ":5002"}, false)
+	server2 := rpc.NewServer()
+	node2 := NewRaftNode("node2", ":5002", server2, map[ServerID]Port{"node1": ":5001"}, false)
 
 	node1.PrepareConnections()
 	node2.PrepareConnections()
 
-	node3 := NewRaftNode("node3", ":5003", map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, true)
+	server3 := rpc.NewServer()
+	node3 := NewRaftNode("node3", ":5003", server3, map[ServerID]Port{"node1": ":5001", "node2": ":5002"}, true)
 	node3.PrepareConnections()
 
 	config := Configuration{
@@ -94,8 +103,10 @@ func TestApplyCommitedConfigurationShutDown(t *testing.T) {
 }
 
 func TestApplyCommitedConfigurationCloseConnection(t *testing.T) {
-	node1 := NewRaftNode("node1", ":5001", map[ServerID]Port{"node2": ":5002"}, false)
-	node2 := NewRaftNode("node2", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
+	server1 := rpc.NewServer()
+	node1 := NewRaftNode("node1", ":5001", server1, map[ServerID]Port{"node2": ":5002"}, false)
+	server2 := rpc.NewServer()
+	node2 := NewRaftNode("node2", ":5002", server2, map[ServerID]Port{"node1": ":5001"}, false)
 
 	node1.PrepareConnections()
 	node2.PrepareConnections()

@@ -55,6 +55,7 @@ type RaftNode struct {
 	leaderCh         chan bool
 	firstHeartbeatCh chan struct{}
 	nextIndex        map[ServerID]uint
+	committedNooP    bool
 	USN              int
 	// log logic
 	log           logStruct
@@ -110,6 +111,7 @@ func NewRaftNode(id ServerID,
 		leaderCh:              make(chan bool),
 		firstHeartbeatCh:      make(chan struct{}),
 		nextIndex:             nil,
+		committedNooP:         false,
 		log: logStruct{
 			entries: []LogEntry{
 				// to start the log from index 1 we add a dummy entry
