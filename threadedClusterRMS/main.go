@@ -68,15 +68,15 @@ func main() {
 	cluster := make(map[raft.ServerID]*server.Server)
 
 	for i := 1; i <= votingCLusterSize; i++ {
-		otherNodes := make(map[raft.ServerID]raft.Port)
+		otherNodes := make(map[raft.ServerID]raft.Address)
 		for j := 1; j <= votingCLusterSize; j++ {
 			if i != j {
-				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Port(":500" + strconv.Itoa(j))
+				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Address("localhost:500" + strconv.Itoa(j))
 			}
 		}
 		cluster[raft.ServerID("node"+strconv.Itoa(i))] = server.NewServer(
 			raft.ServerID("node"+strconv.Itoa(i)),
-			raft.Port(":500"+strconv.Itoa(i)),
+			raft.Address("localhost:500"+strconv.Itoa(i)),
 			otherNodes,
 			false,
 		)
@@ -93,15 +93,15 @@ func main() {
 	unvotingNodes := make(map[raft.ServerID]*server.Server)
 
 	for i := votingCLusterSize + 1; i <= (unvotingClusterSize + votingCLusterSize); i++ {
-		otherNodes := make(map[raft.ServerID]raft.Port)
+		otherNodes := make(map[raft.ServerID]raft.Address)
 		for j := 1; j <= votingCLusterSize; j++ {
 			if i != j {
-				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Port(":500" + strconv.Itoa(j))
+				otherNodes[raft.ServerID("node"+strconv.Itoa(j))] = raft.Address("localhost:500" + strconv.Itoa(j))
 			}
 		}
 		unvotingNodes[raft.ServerID("node"+strconv.Itoa(i))] = server.NewServer(
 			raft.ServerID("node"+strconv.Itoa(i)),
-			raft.Port(":500"+strconv.Itoa(i)),
+			raft.Address("localhost:500"+strconv.Itoa(i)),
 			otherNodes,
 			true,
 		)
