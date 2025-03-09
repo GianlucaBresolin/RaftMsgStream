@@ -13,10 +13,10 @@ type Server struct {
 	stateMachine *msgStreamStateMachine
 }
 
-func NewServer(id raft.ServerID, port raft.Port, peers map[raft.ServerID]raft.Port, unvoting bool) *Server {
+func NewServer(id raft.ServerID, address raft.Address, peers map[raft.ServerID]raft.Address, unvoting bool) *Server {
 	server := rpc.NewServer()
 
-	raftNode := raft.NewRaftNode(id, port, server, peers, unvoting)
+	raftNode := raft.NewRaftNode(id, address, server, peers, unvoting)
 	s := &Server{
 		raftNode:     raftNode,
 		stateMachine: newMsgStreamStateMachine(string(id), raftNode.CommitCh, raftNode.SnapshotRequestCh, raftNode.SnapshotResponseCh, raftNode.ApplySnapshotCh, raftNode.ReadStateCh, raftNode.ReadStateResultCh),
@@ -31,11 +31,11 @@ func NewServer(id raft.ServerID, port raft.Port, peers map[raft.ServerID]raft.Po
 	mux := http.NewServeMux()
 	mux.Handle(rpc.DefaultRPCPath, server)
 
-	listener, err := net.Listen("tcp", string(port))
+	listener, err := net.Listen("tcp", string(address))
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", string(port), err)
+		log.Fatalf("Failed to listen on address %s: %v", string(address), err)
 	}
-	log.Printf("Server %s is listening on %s\n", string(id), string(port))
+	log.Printf("Server %s is listening on %s\n", string(id), string(address))
 
 	go http.Serve(listener, mux)
 
