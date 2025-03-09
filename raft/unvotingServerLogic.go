@@ -8,7 +8,7 @@ import (
 
 type UnvotingServerArguments struct {
 	ServerID ServerID
-	Port     Port
+	Address  Address
 }
 
 type UnvotingServerResult struct {
@@ -28,7 +28,7 @@ func (rn *RaftNode) AddUnvotingServerRPC(req UnvotingServerArguments, res *Unvot
 	}
 
 	// add the connection to the unvotingServer
-	client, err := rpc.DialHTTP("tcp", "localhost"+string(req.Port))
+	client, err := rpc.DialHTTP("tcp", string(req.Address))
 	if err != nil {
 		log.Printf("Failed to dial %s: %v", req.ServerID, err)
 	} else {
@@ -37,7 +37,7 @@ func (rn *RaftNode) AddUnvotingServerRPC(req UnvotingServerArguments, res *Unvot
 	rn.peersConnection[req.ServerID] = client
 
 	// add the server to the unvoting servers
-	rn.unvotingServers[req.ServerID] = string(req.Port)
+	rn.unvotingServers[req.ServerID] = string(req.Address)
 
 	// update its nextIndex
 	rn.nextIndex[req.ServerID] = rn.lastGlobalIndex() + 1
@@ -52,7 +52,7 @@ func (rn *RaftNode) connectAsUnvotingNode() {
 	// request to be added as unvoting server
 	args := UnvotingServerArguments{
 		ServerID: rn.id,
-		Port:     rn.port,
+		Address:  rn.address,
 	}
 	reply := UnvotingServerResult{
 		Success:       false,
@@ -135,7 +135,7 @@ func (rn *RaftNode) disconnectAsUnvotingNode() {
 	// request to be removed as unvoting server
 	args := UnvotingServerArguments{
 		ServerID: rn.id,
-		Port:     rn.port,
+		Address:  rn.address,
 	}
 	reply := UnvotingServerResult{
 		Success: false,

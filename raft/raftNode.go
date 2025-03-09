@@ -24,16 +24,16 @@ const LeaderTimeout = 20
 const snapshotThreshold = 1024
 
 type ServerID string
-type Port string
+type Address string
 
 type Configuration struct {
-	OldConfig map[ServerID]Port
-	NewConfig map[ServerID]Port
+	OldConfig map[ServerID]Address
+	NewConfig map[ServerID]Address
 }
 
 type RaftNode struct {
 	id              ServerID
-	port            Port
+	address         Address
 	state           uint
 	term            uint
 	peers           Configuration
@@ -81,11 +81,11 @@ type RaftNode struct {
 }
 
 func NewRaftNode(id ServerID,
-	port Port,
+	address Address,
 	server *rpc.Server,
-	peers map[ServerID]Port,
+	peers map[ServerID]Address,
 	unvoting bool) *RaftNode {
-	peers[id] = port // add self to the peers list
+	peers[id] = address // add self to the peers list
 	configDummySnap := Configuration{
 		OldConfig: nil,
 		NewConfig: peers,
@@ -96,7 +96,7 @@ func NewRaftNode(id ServerID,
 	}
 	raftNode := &RaftNode{
 		id:                    id,
-		port:                  port,
+		address:               address,
 		term:                  0,
 		state:                 Follower,
 		peers:                 Configuration{OldConfig: nil, NewConfig: peers},

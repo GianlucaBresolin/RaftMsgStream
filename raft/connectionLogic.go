@@ -13,13 +13,13 @@ func (rn *RaftNode) registerNode(server *rpc.Server) {
 }
 
 func (rn *RaftNode) PrepareConnections() {
-	for peer, port := range rn.peers.NewConfig {
-		if rn.peers.OldConfig[peer] == port {
+	for peer, address := range rn.peers.NewConfig {
+		if rn.peers.OldConfig[peer] == address {
 			// skip if the peer is already connected
 			continue
 		}
 
-		client, err := rpc.DialHTTP("tcp", "localhost"+string(port))
+		client, err := rpc.DialHTTP("tcp", string(address))
 		if err != nil {
 			log.Fatalf("Failed to dial %s: %v", peer, err)
 		} else {

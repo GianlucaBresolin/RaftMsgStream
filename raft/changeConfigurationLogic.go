@@ -7,7 +7,7 @@ import (
 )
 
 type newConfiguration struct {
-	NewC map[ServerID]Port `json:"NewConfig"`
+	NewC map[ServerID]Address `json:"NewConfig"`
 }
 
 func (rn *RaftNode) prepareCold_new(command []byte) []byte {
@@ -26,7 +26,7 @@ func (rn *RaftNode) prepareCold_new(command []byte) []byte {
 	}
 
 	// update peers connection
-	for peer, port := range rn.peers.NewConfig {
+	for peer, address := range rn.peers.NewConfig {
 		_, okInOldC := rn.peers.OldConfig[peer]
 		_, okInNewC := rn.peers.NewConfig[peer]
 
@@ -35,7 +35,7 @@ func (rn *RaftNode) prepareCold_new(command []byte) []byte {
 			if !okInUnv {
 				// (otherwise we already have a connection to this node in the unvoting servers)
 				// add the connection
-				client, err := rpc.DialHTTP("tcp", "localhost"+string(port))
+				client, err := rpc.DialHTTP("tcp", string(address))
 				if err != nil {
 					log.Printf("Failed to dial %s: %v", peer, err)
 				} else {
@@ -94,8 +94,8 @@ func (rn *RaftNode) prepareCnew() {
 }
 
 type commandConfiguration struct {
-	OldC map[ServerID]Port `json:"OldConfig"`
-	NewC map[ServerID]Port `json:"NewConfig"`
+	OldC map[ServerID]Address `json:"OldConfig"`
+	NewC map[ServerID]Address `json:"NewConfig"`
 }
 
 // applyConfiguration applies the configuration change to the state, even if it is not committed
@@ -122,7 +122,7 @@ func (rn *RaftNode) applyConfiguration(command []byte) {
 
 	// update peers connection
 	if newConfiguration.OldC != nil { // it is a Cold,new configuration
-		for peer, port := range rn.peers.NewConfig {
+		for peer, address := range rn.peers.NewConfig {
 			_, okInOldC := newConfiguration.OldC[peer]
 			_, okInNewC := newConfiguration.NewC[peer]
 
@@ -131,7 +131,7 @@ func (rn *RaftNode) applyConfiguration(command []byte) {
 				if !okInUnv {
 					// (otherwise we already have a connection to this node in the unvoting servers)
 					// add the connection
-					client, err := rpc.DialHTTP("tcp", "localhost"+string(port))
+					client, err := rpc.DialHTTP("tcp", "localhost"+string(address))
 					if err != nil {
 						log.Printf("Failed to dial %s: %v", peer, err)
 					} else {
