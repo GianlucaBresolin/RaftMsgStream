@@ -1,15 +1,12 @@
 package server
 
 import (
-	"RaftMsgStream/client"
 	"RaftMsgStream/models"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"io"
 	"log"
-	"net/rpc"
-	"time"
 
 	"RaftMsgStream/server/protoServer"
 
@@ -18,25 +15,19 @@ import (
 
 type command struct {
 	Username      string `json:"user"`
-	Userport      string `json:"port"`
 	Group         string `json:"group"`
 	Msg           string `json:"msg"`
 	Partecipation string `json:"partecipation"`
 }
 
-type userInfo struct {
-	port       string
-	connection *rpc.Client
-}
-
 type group struct {
-	users    map[string]userInfo
+	users    map[string]bool
 	messages []models.Message
 }
 
 type msgStreamStateMachine struct {
 	serverId           string
-	requestID          int
+	eventCh            chan models.Event
 	shutdownCh         chan struct{}
 	commandCh          chan []byte
 	readStateCh        chan []byte
@@ -47,10 +38,10 @@ type msgStreamStateMachine struct {
 	groups             map[string]*group
 }
 
-func newMsgStreamStateMachine(serverId string, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponseCh chan []byte, applySnapshotCh chan []byte, readStateCh chan []byte, readStateResultCh chan []byte) *msgStreamStateMachine {
+func newMsgStreamStateMachine(serverId string, eventCh chan models.Event, commandCh chan []byte, snapshotRequestCh chan struct{}, snapshotResponseCh chan []byte, applySnapshotCh chan []byte, readStateCh chan []byte, readStateResultCh chan []byte) *msgStreamStateMachine {
 	return &msgStreamStateMachine{
 		serverId:           serverId,
-		requestID:          0,
+		eventCh:            eventCh,
 		shutdownCh:         make(chan struct{}),
 		commandCh:          commandCh,
 		applySnapshotCh:    applySnapshotCh,
@@ -77,7 +68,7 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		_, okG := m.groups[command.Group]
 		if !okG {
 			m.groups[command.Group] = &group{
-				users:    make(map[string]userInfo),
+				users:    make(map[string]bool),
 				messages: make([]models.Message, 0),
 			}
 		}
@@ -85,15 +76,7 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 		// check if the user is already in the group, otherwise add it
 		_, okU := m.groups[command.Group].users[command.Username]
 		if !okU {
-			// establish a connection with the user
-			client, err := rpc.DialHTTP("tcp", "localhost"+string(command.Userport))
-			if err != nil {
-				log.Printf("Failed to dial: %v", err)
-			}
-			m.groups[command.Group].users[command.Username] = userInfo{
-				port:       command.Userport,
-				connection: client,
-			}
+			m.groups[command.Group].users[command.Username] = true
 		}
 
 		// add the message (if present) to the group
@@ -101,66 +84,27 @@ func (m *msgStreamStateMachine) applyCommand(c []byte) {
 			m.groups[command.Group].messages = append(m.groups[command.Group].messages, models.Message{
 				Username: command.Username,
 				Msg:      command.Msg})
-		}
 
-		// notify all the users in the group
-		for _, user := range m.groups[command.Group].users {
-			success := false
-			updateResult := &client.UpdateResult{}
-			for !success {
-				done := make(chan *rpc.Call, 1)
-				timeout := time.NewTimer(20 * time.Millisecond)
-
-				user.connection.Go("Client.UpdateRPC",
-					client.UpdateARgs{
-						Server:    m.serverId,
-						Group:     command.Group,
-						RequestId: m.requestID,
-					}, updateResult,
-					done)
-
-				select {
-				case call := <-done:
-					if call.Error != nil {
-						log.Printf("Failed to call Update: %v", call.Error)
-					}
-					success = updateResult.Success
-				case <-timeout.C:
-					log.Println("Timeout calling Update to notify the user that he has been added or a message has arrived")
-				}
+			// create the event to notify the users in the group
+			event := models.Event{
+				Msg: models.Message{
+					Username: command.Username,
+					Msg:      command.Msg,
+				},
+				Group: command.Group,
+				Users: m.groups[command.Group].users,
 			}
+			m.eventCh <- event
 		}
-		m.requestID++
 	case "false":
 		// remove the user from the group
-		connectionUser := m.groups[command.Group].users[command.Username].connection
 		delete(m.groups[command.Group].users, command.Username)
 		// notify the user that he has been removed
-		updateResult := &client.UpdateResult{}
-		success := false
-		for !success {
-			done := make(chan *rpc.Call, 1)
-			timeout := time.NewTimer(20 * time.Millisecond)
-
-			connectionUser.Go("Client.UpdateRPC",
-				client.UpdateARgs{
-					Server:    m.serverId,
-					Group:     command.Group,
-					RequestId: m.requestID,
-				}, updateResult,
-				done)
-
-			select {
-			case call := <-done:
-				if call.Error != nil {
-					log.Printf("Failed to call Update: %v", call.Error)
-				}
-				success = updateResult.Success
-			case <-timeout.C:
-				log.Printf("Timeout calling Update to notify the user that he has been removed")
-			}
+		event := models.Event{
+			Users: map[string]bool{command.Username: true},
+			Group: command.Group,
 		}
-		m.requestID++
+		m.eventCh <- event
 	}
 }
 
@@ -209,13 +153,13 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 			}
 		case command := <-m.readStateCh:
 			// read the state providing the info requested by the received command
-			getStateArgs := &client.GetStateArgs{}
+			getStateArgs := &models.GetStateArgs{}
 			err := json.Unmarshal(command, getStateArgs)
 			if err != nil {
 				log.Printf("Error unmarshalling GetStateArgs %v", err)
 				continue
 			}
-			getStateResult := &client.GetStateResult{
+			getStateResult := &models.GetStateResult{
 				Messages:   make([]models.Message, 0),
 				Membership: false,
 			}
@@ -246,15 +190,12 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 			for groupName, group := range m.groups {
 				groupProto := &protoServer.Group{
 					GroupName: groupName,
-					Users:     make([]*protoServer.User, 0),
+					Users:     make([]string, 0),
 					Messages:  make([]*protoServer.Message, 0),
 				}
 
-				for username, _ := range group.users {
-					groupProto.Users = append(groupProto.Users, &protoServer.User{
-						Username: username,
-						Port:     group.users[username].port,
-					})
+				for username := range group.users {
+					groupProto.Users = append(groupProto.Users, username)
 				}
 
 				for _, message := range group.messages {
@@ -293,30 +234,16 @@ func (m *msgStreamStateMachine) handleMsgStreamStateMachine() {
 				log.Printf("Error unmarshalling snapshot %v", err)
 				continue
 			}
-			// close the current connections
-			for _, group := range m.groups {
-				for _, user := range group.users {
-					user.connection.Close()
-				}
-			}
 			// reset the state
 			m.groups = make(map[string]*group)
 			// rebuild the state from the snapshot
 			for _, groupProto := range groups.Groups {
 				group := &group{
-					users:    make(map[string]userInfo),
+					users:    make(map[string]bool),
 					messages: make([]models.Message, 0),
 				}
 				for _, user := range groupProto.Users {
-					// establish a connection with the user
-					client, err := rpc.DialHTTP("tcp", "localhost"+user.Port)
-					if err != nil {
-						log.Printf("Failed to dial: %v", err)
-					}
-					group.users[user.Username] = userInfo{
-						port:       user.Port,
-						connection: client,
-					}
+					group.users[user] = true
 				}
 				for _, message := range groupProto.Messages {
 					group.messages = append(group.messages, models.Message{

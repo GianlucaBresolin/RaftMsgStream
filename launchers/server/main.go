@@ -8,15 +8,23 @@ import (
 )
 
 func main() {
-	log.Println("Starting server in unvoting mode", os.Args[1])
+	log.Println("Starting server in unvoting mode", os.Args[3])
+
+	peers := make(map[raft.ServerID]raft.Address)
+	if len(os.Args) > 3 {
+		for i := 4; i < len(os.Args); i += 2 {
+			peers[raft.ServerID(os.Args[i])] = raft.Address(os.Args[i+1])
+		}
+	}
+
 	server := server.NewServer(
-		raft.ServerID("node1"),
-		raft.Address("localhost:5001"),
-		map[raft.ServerID]raft.Address{},
-		os.Args[1] == "true",
+		raft.ServerID(os.Args[1]),
+		os.Args[2],
+		peers,
+		os.Args[3] == "true",
 	)
 
 	server.PrepareConnectionsWithOtherServers()
 
-	go server.Run()
+	server.Run()
 }

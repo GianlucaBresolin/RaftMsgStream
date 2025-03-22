@@ -3,6 +3,7 @@ package raft
 import (
 	"RaftMsgStream/models"
 	"log"
+	"os"
 	"sync"
 	"time"
 )
@@ -16,7 +17,7 @@ type replicationState struct {
 	clientCh               chan bool
 }
 
-func (rn *RaftNode) ActionRequest(req models.ClientRequestArguments, res *models.ClientRequestResult) {
+func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.ClientActionResult) {
 	rn.mutex.Lock()
 
 	if rn.state == Leader {
@@ -104,11 +105,12 @@ func (rn *RaftNode) ActionRequest(req models.ClientRequestArguments, res *models
 
 	// redirect to leader if not leader or stale request
 	res.Success = false
-	res.Leader = string(rn.currentLeader)
+	leaderAdd := string(rn.peers.NewConfig[rn.currentLeader])
+	res.Leader = string(leaderAdd + ":" + os.Getenv("SERVER_PORT"))
 	rn.mutex.Unlock()
 }
 
-func (rn *RaftNode) GetState(req models.ClientRequestArguments, res *models.ClientRequestResult) {
+func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.ClientGetStateResult) {
 	rn.mutex.Lock()
 	// check if the request is stale
 	_, okC := rn.lastUSNof[req.Id]

@@ -5,9 +5,14 @@
     <title>RaftMsgStream</title>
     <script src="/static/chat.js"></script>
     <script>
-        function handleKeyPress(event) {
+        function handleMessagePress(event) {
             if (event.key === "Enter") {
                 sendMessage();
+            }
+        }
+        function handleLoginPress(event) {
+            if (event.key === "Enter") {
+                login();
             }
         }
     </script>
@@ -18,16 +23,20 @@
     <div id="groupName">
         <h2>RaftMsgStream Group</h2>
     </div>
+    <div id="loginContainer">
+        <input type="text" id="username" placeholder="Username" autofocus onkeydown="handleLoginPress(event)">
+        <button onclick="login()"> Login </button>
+    </div>
     <button id="leaveGroup" onclick="leaveGroup()"> Leave Group </button>
     <button id="joinGroup" onclick="joinGroup()"> Join Group </button>
     <div id="chatContainer">
         <div id="messages"></div>
         <div id="inputContainer" >
-            <input type="text" id="inputMessage" placeholder="Write a message..." onkeydown="handleKeyPress(event)" autofocus>
+            <input type="text" id="inputMessage" placeholder="Write a message..." onkeydown="handleMessagePress(event)" autofocus>
             <button onclick="sendMessage()">
                 <i class="fas fa-paper-plane"></i>
             </button>
         </div>
-    </div>    
+    </div>
 </body>
 </html>

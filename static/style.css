@@ -36,6 +36,14 @@ h2 {
     margin-top: 120px;   
 }
 
+#loginContainer {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
 #leaveGroup {
     font-size: 10px;
     height: fit-content;

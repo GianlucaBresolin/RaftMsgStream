@@ -1,6 +1,9 @@
 package raft
 
-import "log"
+import (
+	"errors"
+	"log"
+)
 
 type RequestVoteArguments struct {
 	Term         uint
@@ -17,6 +20,10 @@ type RequestVoteResult struct {
 func (rn *RaftNode) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteResult) error {
 	rn.mutex.Lock()
 	defer rn.mutex.Unlock()
+
+	if !rn.available {
+		return errors.New("node is still not available")
+	}
 
 	if rn.unvotingServer {
 		// discard vote request to avoid disruption from unvoting servers
@@ -79,6 +86,10 @@ type AppendEntriesResult struct {
 func (rn *RaftNode) AppendEntriesRPC(arg AppendEntriesArguments, res *AppendEntriesResult) error {
 	rn.mutex.Lock()
 	defer rn.mutex.Unlock()
+
+	if !rn.available {
+		return errors.New("node is still not available")
+	}
 
 	if arg.Term < rn.term {
 		res.Term = rn.term
@@ -222,6 +233,10 @@ type InstallSnapshotResult struct {
 func (rn *RaftNode) InstallSnapshotRPC(arg InstallSnapshotArguments, res *InstallSnapshotResult) error {
 	rn.mutex.Lock()
 	defer rn.mutex.Unlock()
+
+	if !rn.available {
+		return errors.New("node is still not available")
+	}
 
 	if arg.Term < rn.term {
 		res.Term = rn.term

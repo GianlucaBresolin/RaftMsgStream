@@ -175,6 +175,8 @@ func (rn *RaftNode) askForVotes() {
 						done := make(chan *rpc.Call, 1)
 						timeout := time.NewTimer(20 * time.Millisecond)
 
+						log.Println("Node ", rn.id, " is asking for votes to node ", peer, " for term ", requestVoteArguments.Term)
+
 						peerConnection.Go(
 							"RaftNode.RequestVoteRPC",
 							requestVoteArguments,

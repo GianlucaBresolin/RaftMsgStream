@@ -3,7 +3,10 @@ package raft
 import (
 	"encoding/json"
 	"log"
+	"net"
+	"net/http"
 	"net/rpc"
+	"os"
 	"sync"
 	"time"
 )
@@ -34,6 +37,7 @@ type Configuration struct {
 type RaftNode struct {
 	id              ServerID
 	address         Address
+	available       bool
 	state           uint
 	term            uint
 	peers           Configuration
@@ -97,6 +101,7 @@ func NewRaftNode(id ServerID,
 	raftNode := &RaftNode{
 		id:                    id,
 		address:               address,
+		available:             false,
 		term:                  0,
 		state:                 Follower,
 		peers:                 Configuration{OldConfig: nil, NewConfig: peers},
@@ -146,7 +151,22 @@ func NewRaftNode(id ServerID,
 		unvotingServer:  unvoting,
 		unvotingServers: make(map[ServerID]string),
 	}
-	raftNode.registerNode(server)
+
+	err := server.Register(raftNode)
+	if err != nil {
+		log.Fatalf("Failed to register node %s: %v", id, err)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle(rpc.DefaultRPCPath, server)
+
+	listener, err := net.Listen("tcp", string(raftNode.address)+":"+os.Getenv("RAFT_PORT"))
+	if err != nil {
+		log.Fatalf("Failed to listen on address %s: %v", string(raftNode.address), err)
+	}
+	log.Printf("Node %s is listening on %s\n", string(raftNode.id), string(address))
+
+	go http.Serve(listener, mux)
 	return raftNode
 }
 
@@ -191,6 +211,7 @@ func (rn *RaftNode) handleUnvotingNode() bool {
 
 func (rn *RaftNode) HandleRaftNode() {
 	rn.startTimer()
+	rn.available = true
 
 	if rn.unvotingServer {
 		joinTheCluster := rn.handleUnvotingNode()

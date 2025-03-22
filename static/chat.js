@@ -1,96 +1,166 @@
-function sendMessage() {
-    let text = document.getElementById("inputMessage").value;
-    document.getElementById("inputMessage").value = "";
-    fetch('/send', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "RaftMsgStream", message: text })
-    });
-}
-
-var username; 
-
-async function getUsername() {
-    while (username == null || username == undefined) {
-        const response = await fetch("http://localhost:8080/get-username");
-        const data = await response.json();
-        username = data.value;
-    }
-}
-
-var membership = false;
-async function getMembership() {
-    const response = await fetch('/get-membership', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "RaftMsgStream" })
-    });
-    const data = await response.json();
-    membership = data.membership;
-}
-
-function joinGroup() {
-    fetch('/send', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "RaftMsgStream", message: null })
-    });
-
-    setTimeout(async () => {
-        if (membership == false || membership == undefined) {
-            await getMembership();
-            if (membership == true) {
-                document.getElementById("chatContainer").style.display = "flex";
-                document.getElementById("leaveGroup").style.display = "block";
-                document.getElementById("joinGroup").style.display = "none";
-            }
-        }
-    }, 300);
-}
-
-function leaveGroup() {
-    fetch('/leave', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group: "RaftMsgStream" })
-    });
-    
-    setTimeout(async () => {
-        if (membership == true) {
-            await getMembership();
-            if (membership == false) {
-                document.getElementById("chatContainer").style.display = "none";
-                document.getElementById("leaveGroup").style.display = "none";
-                document.getElementById("joinGroup").style.display = "block";
-                document.getElementById("messages").innerHTML = "";
-            }
-        }
-    }, 300);
-}
-
-
-const socket = new WebSocket("ws://localhost:8080/ws");
-
-socket.onopen = async () => {
-    if (username == null || username == undefined) {
-        await getUsername();
-    }
-    if (membership == false) {
+function handleMembership() {
+    if (sessionStorage.getItem("membership") === "true") {
+        document.getElementById("chatContainer").style.display = "flex";
+        document.getElementById("leaveGroup").style.display = "block";
+        document.getElementById("joinGroup").style.display = "none";
+    } else {
         document.getElementById("chatContainer").style.display = "none";
-        document.getElementById("leaveGroup").style.display = "none";   
+        document.getElementById("leaveGroup").style.display = "none";
         document.getElementById("joinGroup").style.display = "block";
     }
-};
+}
 
-socket.onerror = (error) => {
-    console.error("WebSocket error:", error);
-};
+var eventSource = null;
 
-socket.onmessage = async (event) => {
-    receiveMessage(event.data);
-};
+window.onload = async () => {
+    if (sessionStorage.getItem("username") != null) {
+        document.getElementById("loginContainer").style.display = "none";
+        handleMembership();
+    } else {
+        document.getElementById("loginContainer").style.display = "flex";
+        document.getElementById("chatContainer").style.display = "none";
+        document.getElementById("leaveGroup").style.display = "none";
+        document.getElementById("joinGroup").style.display = "none";
+    }
 
-async function receiveMessage(message) {
+    fetch('/subscribe', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+        })
+    }).then((response) => {
+        eventSource = new EventSource('/events?user=' + sessionStorage.getItem("username"));
+    });
+}
+
+window.onclose = async () => { 
+    fetch('/unsubscribe', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+        })
+    }).then((response) => {
+        eventSource.close();
+    })
+}
+
+function login() {
+    sessionStorage.setItem("username", document.getElementById("username").value);
+    sessionStorage.setItem("USN", 0);
+
+    document.getElementById("loginContainer").style.display = "none";
+    handleMembership();
+}
+
+async function joinGroup(url = '/send') {
+    let response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+            USN: parseInt(sessionStorage.getItem("USN")),
+            group: "RaftMsgStream", 
+            message: null })
+    });
+
+    let data = response.json();
+
+    if (response.status == 200) {
+        sessionStorage.setItem("membership", "true");
+        sessionStorage.setItem("lastMessageIndex", 0);
+        sessionStorage.setItem("USN", parseInt(sessionStorage.getItem("USN")) + 1);
+        handleMembership();
+    } else {
+        if (data.leader != null) {
+            await joinGroup(`http://${data.leader}/send`);
+        }
+    }
+}
+
+async function sendMessage(url = '/send') {
+    let message = document.getElementById("inputMessage").value;
+    document.getElementById("inputMessage").value = "";
+    let response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+            USN: parseInt(sessionStorage.getItem("USN")),
+            group: "RaftMsgStream", 
+            message: message })
+    });
+
+    let data = response.json();
+
+    if (response.status == 200) {
+        sessionStorage.setItem("USN", parseInt(sessionStorage.getItem("USN")) + 1);
+        console.log("Message sent");
+    } else {
+        if (data.leader != null) {
+            await sendMessage(`http://${data.leader}/send`);
+        }
+    }
+}
+
+async function leaveGroup(url = '/leave') {
+    let response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+            USN: parseInt(sessionStorage.getItem("USN")),
+            group: "RaftMsgStream" })
+    });
+    
+    let data = response.json();
+
+    if (response.status == 200) {
+        sessionStorage.setItem("membership", "false");
+        sessionStorage.setitem("lastMessageIndex", 0);
+        sessionStorage.setItem("USN", partseInt(sessionStorage.getItem("USN")) + 1);
+        handleMembership();
+    } else {
+        if (data.leader != null) {
+            await leaveGroup(`http://${data.leader}/leave`);
+        }
+    }
+}
+
+eventSource.onmessage = async (event) => {
+    await updateMessages();
+}
+
+async function updateMessages(url = '/update') {
+    // we have been notified by the server, we need to update our messages
+    let response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+            USN: parseInt(sessionStorage.getItem("USN")),
+            lastMessageIndex: parseInt(sessionStorage.getItem("lastMessageIndex")),
+            group: "RaftMsgStream" })
+    });
+
+    let state = JSON.parse(result.state);
+
+    const messages = state.Messages;
+
+    if (response.status == 200) {
+        messages.forEach((message) => {
+            receiveMessage(message);
+            sessionStorage.setItem("lastMessageIndex", parseInt(sessionStorage.getItem("lastMessageIndex")) + 1);
+        });
+    } else {
+        if (messages.leader != null) {
+            await updateMessages(`http://${messages.leader}/update`);
+        }
+    }
+}
+
+function receiveMessage(message) {
     const messageData = JSON.parse(message);
 
     // message container
@@ -100,7 +170,7 @@ async function receiveMessage(message) {
     // username container
     let usernameElement = document.createElement("span");
     usernameElement.classList.add("username");
-    if (messageData.Username == username) {
+    if (messageData.Username == sessionStorage.getItem("username")) {
         usernameElement.classList.add("our-user");
     } else {
         usernameElement.classList.add("other-user");

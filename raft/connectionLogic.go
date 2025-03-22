@@ -1,32 +1,29 @@
 package raft
 
 import (
+	"errors"
 	"log"
 	"net/rpc"
 )
 
-func (rn *RaftNode) registerNode(server *rpc.Server) {
-	err := server.Register(rn)
-	if err != nil {
-		log.Fatalf("Failed to register node %s: %v", rn.id, err)
-	}
-}
-
-func (rn *RaftNode) PrepareConnections() {
+func (rn *RaftNode) PrepareConnections() error {
+	e := error(nil)
 	for peer, address := range rn.peers.NewConfig {
-		if rn.peers.OldConfig[peer] == address {
+		if rn.peersConnection[peer] != nil || peer == rn.id {
 			// skip if the peer is already connected
 			continue
 		}
 
 		client, err := rpc.DialHTTP("tcp", string(address))
 		if err != nil {
-			log.Fatalf("Failed to dial %s: %v", peer, err)
+			log.Printf("Failed to dial %s: %v", peer, err)
+			e = errors.New("failed to dial")
 		} else {
 			log.Printf("Node %s connected to %s", rn.id, peer)
+			rn.peersConnection[peer] = client
 		}
-		rn.peersConnection[peer] = client
 	}
+	return e
 }
 
 func (rn *RaftNode) closeConnections() {
