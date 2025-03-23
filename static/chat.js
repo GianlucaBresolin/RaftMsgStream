@@ -22,16 +22,6 @@ window.onload = async () => {
         document.getElementById("leaveGroup").style.display = "none";
         document.getElementById("joinGroup").style.display = "none";
     }
-
-    fetch('/subscribe', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            user: sessionStorage.getItem("username"),
-        })
-    }).then((response) => {
-        eventSource = new EventSource('/events?user=' + sessionStorage.getItem("username"));
-    });
 }
 
 window.onclose = async () => { 
@@ -41,12 +31,12 @@ window.onclose = async () => {
         body: JSON.stringify({ 
             user: sessionStorage.getItem("username"),
         })
-    }).then((response) => {
+    }).then(() => {
         eventSource.close();
     })
 }
 
-function login() {
+function loginUser() {
     sessionStorage.setItem("username", document.getElementById("username").value);
     sessionStorage.setItem("USN", 0);
 
@@ -69,7 +59,7 @@ async function joinGroup(url = '/send') {
 
     if (response.status == 200) {
         sessionStorage.setItem("membership", "true");
-        sessionStorage.setItem("lastMessageIndex", 0);
+        sessionStorage.setItem("lastMessageIndex", -1);
         sessionStorage.setItem("USN", parseInt(sessionStorage.getItem("USN")) + 1);
         handleMembership();
     } else {
@@ -77,30 +67,41 @@ async function joinGroup(url = '/send') {
             await joinGroup(`http://${data.leader}/send`);
         }
     }
+
+    fetch('/subscribe', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            user: sessionStorage.getItem("username"),
+        })
+    }).then(() => {
+        eventSource = new EventSource('/publish?user=' + sessionStorage.getItem("username"));
+
+        eventSource.onmessage =  function(event) {
+            updateMessages();
+        }
+    });
 }
 
 async function sendMessage(url = '/send') {
     let message = document.getElementById("inputMessage").value;
     document.getElementById("inputMessage").value = "";
+    sessionStorage.setItem("USN", parseInt(sessionStorage.getItem("USN")) + 1);
+    previousUSN = parseInt(sessionStorage.getItem("USN"))-1;
     let response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
             user: sessionStorage.getItem("username"),
-            USN: parseInt(sessionStorage.getItem("USN")),
+            USN: previousUSN,
             group: "RaftMsgStream", 
             message: message })
     });
 
     let data = response.json();
-
-    if (response.status == 200) {
-        sessionStorage.setItem("USN", parseInt(sessionStorage.getItem("USN")) + 1);
-        console.log("Message sent");
-    } else {
-        if (data.leader != null) {
-            await sendMessage(`http://${data.leader}/send`);
-        }
+    
+    if (data.status == 'redirecting to leader') {
+        await sendMessage(`http://${data.leader}/send`);
     }
 }
 
@@ -118,7 +119,7 @@ async function leaveGroup(url = '/leave') {
 
     if (response.status == 200) {
         sessionStorage.setItem("membership", "false");
-        sessionStorage.setitem("lastMessageIndex", 0);
+        sessionStorage.setitem("lastMessageIndex", -1);
         sessionStorage.setItem("USN", partseInt(sessionStorage.getItem("USN")) + 1);
         handleMembership();
     } else {
@@ -126,10 +127,6 @@ async function leaveGroup(url = '/leave') {
             await leaveGroup(`http://${data.leader}/leave`);
         }
     }
-}
-
-eventSource.onmessage = async (event) => {
-    await updateMessages();
 }
 
 async function updateMessages(url = '/update') {
@@ -144,25 +141,20 @@ async function updateMessages(url = '/update') {
             group: "RaftMsgStream" })
     });
 
-    let state = JSON.parse(result.state);
+    let result = await response.json();
 
-    const messages = state.Messages;
-
-    if (response.status == 200) {
+    if (result.status == 'state updated') {
+        let messages = result.state.Messages;
         messages.forEach((message) => {
             receiveMessage(message);
             sessionStorage.setItem("lastMessageIndex", parseInt(sessionStorage.getItem("lastMessageIndex")) + 1);
         });
-    } else {
-        if (messages.leader != null) {
-            await updateMessages(`http://${messages.leader}/update`);
-        }
+    } else if (result.status == 'redirecting to leader') {
+        await updateMessages(`http://${result.leader}/update`);
     }
 }
 
 function receiveMessage(message) {
-    const messageData = JSON.parse(message);
-
     // message container
     let messageElement = document.createElement("div");
     messageElement.classList.add("message");
@@ -170,17 +162,17 @@ function receiveMessage(message) {
     // username container
     let usernameElement = document.createElement("span");
     usernameElement.classList.add("username");
-    if (messageData.Username == sessionStorage.getItem("username")) {
+    if (message.Username == sessionStorage.getItem("username")) {
         usernameElement.classList.add("our-user");
     } else {
         usernameElement.classList.add("other-user");
     }
-    usernameElement.innerText = messageData.Username;
+    usernameElement.innerText = message.Username;
 
     // message content container
     let messageContentElement = document.createElement("span");
     messageContentElement.classList.add("message-content");
-    messageContentElement.innerText = " " +messageData.Msg;
+    messageContentElement.innerText = " " +message.Msg;
 
     messageElement.appendChild(usernameElement);
     messageElement.appendChild(messageContentElement);

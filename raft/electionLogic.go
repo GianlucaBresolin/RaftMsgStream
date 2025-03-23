@@ -168,6 +168,9 @@ func (rn *RaftNode) askForVotes() {
 			// we need to ask for votes
 			for peer, peerConnection := range rn.peersConnection {
 				//log.Println("Asking for votes", rn.id, "for term", rn.term)
+				if peer == rn.id {
+					continue
+				}
 				go func() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false

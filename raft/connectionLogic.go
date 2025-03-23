@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/rpc"
+	"os"
 )
 
 func (rn *RaftNode) PrepareConnections() error {
@@ -14,7 +15,7 @@ func (rn *RaftNode) PrepareConnections() error {
 			continue
 		}
 
-		client, err := rpc.DialHTTP("tcp", string(address))
+		client, err := rpc.DialHTTP("tcp", string(address)+":"+os.Getenv("RAFT_PORT"))
 		if err != nil {
 			log.Printf("Failed to dial %s: %v", peer, err)
 			e = errors.New("failed to dial")

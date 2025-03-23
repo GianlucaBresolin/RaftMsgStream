@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"os"
 	"sync"
 	"time"
 )
@@ -160,7 +159,7 @@ func NewRaftNode(id ServerID,
 	mux := http.NewServeMux()
 	mux.Handle(rpc.DefaultRPCPath, server)
 
-	listener, err := net.Listen("tcp", string(raftNode.address)+":"+os.Getenv("RAFT_PORT"))
+	listener, err := net.Listen("tcp", string(raftNode.address))
 	if err != nil {
 		log.Fatalf("Failed to listen on address %s: %v", string(raftNode.address), err)
 	}

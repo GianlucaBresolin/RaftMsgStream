@@ -3,7 +3,6 @@ package raft
 import (
 	"RaftMsgStream/models"
 	"log"
-	"os"
 	"sync"
 	"time"
 )
@@ -32,7 +31,7 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 			if entry.Client == req.Id {
 				// we already have the request in the log, discard it
 				res.Success = true
-				res.Leader = string(rn.id)
+				res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 				rn.mutex.Unlock()
 				return
 			}
@@ -45,7 +44,7 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 				if rn.peers.OldConfig != nil {
 					// discard the request
 					res.Success = false
-					res.Leader = string(rn.id)
+					res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 					rn.mutex.Unlock()
 					return
 				}
@@ -92,12 +91,12 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 			committed := <-clientCh
 
 			res.Success = committed
-			res.Leader = string(rn.id)
+			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			return
 		} else {
 			// we already have the request in the log, discard it
 			res.Success = true
-			res.Leader = string(rn.id)
+			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
 			return
 		}
@@ -105,8 +104,7 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 
 	// redirect to leader if not leader or stale request
 	res.Success = false
-	leaderAdd := string(rn.peers.NewConfig[rn.currentLeader])
-	res.Leader = string(leaderAdd + ":" + os.Getenv("SERVER_PORT"))
+	res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 	rn.mutex.Unlock()
 }
 
@@ -119,7 +117,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 	}
 	if rn.lastUSNof[req.Id] >= req.USN {
 		res.Success = false
-		res.Leader = string(rn.currentLeader)
+		res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 		rn.mutex.Unlock()
 		return
 	}
@@ -130,7 +128,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 	if !rn.unvotingServer {
 		if rn.state != Leader {
 			res.Success = false
-			res.Leader = string(rn.currentLeader)
+			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
 			return
 		}
@@ -139,7 +137,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 		// on which entries are committed
 		if !rn.committedNooP {
 			res.Success = false
-			res.Leader = string(rn.currentLeader)
+			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
 			return
 		}
@@ -191,7 +189,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 		case <-authorizedReadTimeout:
 			// we did not get the majority of the cluster to respond
 			res.Success = false
-			res.Leader = string(rn.currentLeader)
+			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			log.Println("Node", rn.id, "did not get the majority of the cluster to respond or the timeout expired")
 			rn.mutex.Unlock()
 			return
@@ -211,5 +209,5 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 
 	res.Success = true
 	res.Data = resultData
-	res.Leader = string(rn.currentLeader)
+	res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 }
