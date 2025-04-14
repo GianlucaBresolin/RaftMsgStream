@@ -8,7 +8,7 @@ A Proof-of-Concept in Go for a message streaming distributed system that ensures
 
 In addition, a SPA is provided, encompassing all major features.
 
-<img src="./screenshots/screenshot.png" alt="Screenshot of RaftMsgStream SPA" width="300"/>
+<img src="./screenshots/screenshot.png" alt="Screenshot of RaftMsgStream SPA" width="400"/>
 
 ## Documentation
 [Technical Report](https://github.com/GianlucaBresolin/RaftMsgStream/blob/master/TechincalReport.pdf), elaborated for the exam of the course "Runtimes for distribution and concurrency", attended at the University of Padua. Here you can find the design choices that led to the implementation of the project, with considerations on scalability, the Go Runtime, and the Raft algorithm.
