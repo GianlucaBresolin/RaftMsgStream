@@ -22,12 +22,18 @@ type Server struct {
 	stateMachine *msgStreamStateMachine
 }
 
-func NewServer(id raft.ServerID, address string, peers map[raft.ServerID]raft.Address, unvoting bool) *Server {
+func NewServer(id raft.ServerID, address string, raftPort string, peers map[raft.ServerID]models.Address, unvoting bool) *Server {
 	server := rpc.NewServer()
 
-	raftNodeAddress := raft.Address(address + ":" + os.Getenv("RAFT_PORT"))
-	raftNode := raft.NewRaftNode(id, raftNodeAddress, server, peers, unvoting)
+	raftNodeAddress := raft.Address(address + ":" + raftPort)
+	raftPeers := make(map[raft.ServerID]raft.Address)
+	for node, add := range peers {
+		raftPeers[node] = raft.Address(add.Address + ":" + add.RaftPort)
+	}
+	raftNode := raft.NewRaftNode(id, raftNodeAddress, server, raftPeers, unvoting)
+
 	eventCh := make(chan models.Event)
+
 	return &Server{
 		address:      address,
 		clients:      make(map[string]chan models.Event),

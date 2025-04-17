@@ -7,55 +7,51 @@ import (
 )
 
 func TestClientRequestArguments(t *testing.T) {
-	var req models.ClientRequestArguments
+	var req models.ClientActionArguments
 	req.Command = []byte("test")
 	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res models.ClientRequestResult
+	var res models.ClientActionResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
-	leaderNode.state = Leader
-	leaderNode.lastUSNof = make(map[string]int)
-	leaderNode.lastUSNof["test"] = 0
+	rpcServer := rpc.NewServer()
+	node := NewRaftNode("Node1", "localhost:5001", rpcServer, map[ServerID]Address{}, false)
+	node.state = Leader
+	node.lastUSNof = make(map[string]int)
+	node.lastUSNof["test"] = 0
 
 	go func() {
-		<-leaderNode.logEntriesCh
-		leaderNode.pendingCommit[1].clientCh <- true
+		<-node.logEntriesCh
+		node.pendingCommit[1].clientCh <- true
 	}()
 
-	err := leaderNode.ActionRequestRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call ActionRPC: %v", err)
-	}
+	node.ActionRequest(req, &res)
 	if !res.Success {
 		t.Errorf("Expected success, got %v", res.Success)
 	}
-	if leaderNode.log.entries[1].Client != "test" {
-		t.Errorf("Expected client test, got %v", leaderNode.log.entries[1].Client)
+	if node.log.entries[1].Client != "test" {
+		t.Errorf("Expected client test, got %v", node.log.entries[1].Client)
 	}
 }
 
 func TestClientRequestStaleUSN(t *testing.T) {
-	var req models.ClientRequestArguments
+	var req models.ClientActionArguments
 	req.Command = []byte("test")
 	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res models.ClientRequestResult
+	var res models.ClientActionResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
+	rpcServer := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", "localhost:5001", rpcServer, map[ServerID]Address{}, false)
 	leaderNode.state = Leader
 	leaderNode.currentLeader = "Server1"
 	leaderNode.lastUSNof = make(map[string]int)
 	leaderNode.lastUSNof["test"] = 1
 
-	err := leaderNode.ActionRequestRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call ActionRPC: %v", err)
-	}
+	leaderNode.ActionRequest(req, &res)
 	if res.Success {
 		t.Errorf("Expected failure, got %v", res.Success)
 	}
@@ -65,16 +61,15 @@ func TestClientRequestStaleUSN(t *testing.T) {
 }
 
 func TestGetStateRPCVotingServer(t *testing.T) {
-	var req models.ClientRequestArguments
+	var req models.ClientGetStateArguments
 	req.Command = []byte("test")
-	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res models.ClientRequestResult
+	var res models.ClientGetStateResult
 
-	server := rpc.NewServer()
-	leaderNode := NewRaftNode("Server1", ":5001", server, map[ServerID]Port{}, false)
+	rpcServer := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{}, false)
 	leaderNode.state = Leader
 	leaderNode.lastUSNof = make(map[string]int)
 	leaderNode.lastUSNof["test"] = 0
@@ -103,18 +98,18 @@ func TestGetStateRPCVotingServer(t *testing.T) {
 }
 
 func TestGetStateRPCNonVotingServer(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientGetStateArguments
 	req.Command = []byte("test")
-	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientGetStateResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
+	rpcServer := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", "localhost:5001", rpcServer, map[ServerID]Address{}, false)
 	leaderNode.state = Leader
 
-	nonVotingNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, true)
+	nonVotingNode := NewRaftNode("Server2", "localhost:5002", rpcServer, map[ServerID]Address{"Server1": "localhost:5001"}, true)
 	nonVotingNode.currentLeader = "Server1"
 	nonVotingNode.lastUSNof = make(map[string]int)
 	nonVotingNode.lastUSNof["test"] = 0
@@ -124,10 +119,7 @@ func TestGetStateRPCNonVotingServer(t *testing.T) {
 		nonVotingNode.ReadStateResultCh <- []byte("test")
 	}()
 
-	err := nonVotingNode.GetStateRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call GetStateRPC: %v", err)
-	}
+	nonVotingNode.GetState(req, &res)
 	if !res.Success {
 		t.Errorf("Expected success, got %v", res.Success)
 	}
@@ -137,24 +129,21 @@ func TestGetStateRPCNonVotingServer(t *testing.T) {
 }
 
 func TestGetStateRPCStaleUSN(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientGetStateArguments
 	req.Command = []byte("test")
-	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientGetStateResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
+	rpcServer := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{}, false)
 	leaderNode.state = Leader
 	leaderNode.currentLeader = "Server1"
 	leaderNode.lastUSNof = make(map[string]int)
 	leaderNode.lastUSNof["test"] = 1
 
-	err := leaderNode.GetStateRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call GetStateRPC: %v", err)
-	}
+	leaderNode.GetState(req, &res)
 	if res.Success {
 		t.Errorf("Expected failure, got %v", res.Success)
 	}
@@ -164,22 +153,19 @@ func TestGetStateRPCStaleUSN(t *testing.T) {
 }
 
 func TestGetStateRPCNotLeader(t *testing.T) {
-	var req ClientRequestArguments
+	var req models.ClientGetStateArguments
 	req.Command = []byte("test")
-	req.Type = ActionEntry
 	req.Id = "test"
 	req.USN = 1
 
-	var res ClientRequestResult
+	var res models.ClientGetStateResult
 
-	leaderNode := NewRaftNode("Server1", ":5001", map[ServerID]Port{}, false)
+	rpcServer := rpc.NewServer()
+	leaderNode := NewRaftNode("Server1", "localhost:5001", rpcServer, map[ServerID]Address{}, false)
 	leaderNode.state = Follower
 	leaderNode.currentLeader = "Server2"
 
-	err := leaderNode.GetStateRPC(req, &res)
-	if err != nil {
-		t.Errorf("Failed to call GetStateRPC: %v", err)
-	}
+	leaderNode.GetState(req, &res)
 	if res.Success {
 		t.Errorf("Expected failure, got %v", res.Success)
 	}

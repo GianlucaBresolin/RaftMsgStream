@@ -8,7 +8,7 @@ import (
 
 func TestRequestVoteRPCSuccess(t *testing.T) {
 	server := rpc.NewServer()
-	nodeCandidate := NewRaftNode("Server1", ":5001", server, map[ServerID]Port{"Server2": ":5002"}, false)
+	nodeCandidate := NewRaftNode("Server1", ":5001", server, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 
@@ -22,7 +22,7 @@ func TestRequestVoteRPCSuccess(t *testing.T) {
 	var res RequestVoteResult
 
 	otherServer := rpc.NewServer()
-	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Port{"Server1": ":5001"}, false)
+	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	otherNode.term = 0
 	otherNode.state = Follower
 	otherNode.myVote = ""
@@ -51,7 +51,7 @@ func TestRequestVoteRPCSuccess(t *testing.T) {
 
 func TestRequestVoteRPCStaleTerm(t *testing.T) {
 	serverCandidate := rpc.NewServer()
-	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Port{"Server2": ":5002"}, false)
+	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 
@@ -65,7 +65,7 @@ func TestRequestVoteRPCStaleTerm(t *testing.T) {
 	var res RequestVoteResult
 
 	otherServer := rpc.NewServer()
-	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Port{"Server1": ":5001"}, false)
+	otherNode := NewRaftNode("Server2", ":5002", otherServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	otherNode.term = 0
 	otherNode.state = Follower
 	otherNode.myVote = ""
@@ -94,7 +94,7 @@ func TestRequestVoteRPCStaleTerm(t *testing.T) {
 
 func TestRequestVoteRPCAlreadyVoted(t *testing.T) {
 	serverCandidate := rpc.NewServer()
-	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Port{"Server2": ":5002"}, false)
+	nodeCandidate := NewRaftNode("Server1", ":5001", serverCandidate, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeCandidate.term = 1
 	nodeCandidate.state = Candidate
 	nodeCandidate.myVote = "Server2"
@@ -108,7 +108,7 @@ func TestRequestVoteRPCAlreadyVoted(t *testing.T) {
 
 	var res RequestVoteResult
 
-	otherNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	otherNode := NewRaftNode("Server2", ":5002", serverCandidate, map[ServerID]Address{"Server1": ":5001"}, false)
 	otherNode.term = 0
 	otherNode.state = Follower
 	otherNode.myVote = ""
@@ -136,10 +136,11 @@ func TestRequestVoteRPCAlreadyVoted(t *testing.T) {
 }
 
 func TestAppendEntriesRPCSuccess(t *testing.T) {
-	nodeFollower := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	rpcServer := rpc.NewServer()
+	nodeFollower := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeFollower.term = 1
 
-	leaderNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	leaderNode := NewRaftNode("Server2", ":5002", rpcServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	leaderNode.term = 1
 	leaderNode.state = Leader
 
@@ -210,10 +211,11 @@ func TestAppendEntriesRPCSuccess(t *testing.T) {
 }
 
 func TestAppendEntriesRPCStaleTerm(t *testing.T) {
-	nodeFollower := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	rpcServer := rpc.NewServer()
+	nodeFollower := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeFollower.term = 1
 
-	leaderNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	leaderNode := NewRaftNode("Server2", ":5002", rpcServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	leaderNode.term = 0
 	leaderNode.state = Leader
 
@@ -256,10 +258,11 @@ func TestAppendEntriesRPCStaleTerm(t *testing.T) {
 }
 
 func TestInstallSnapshotRPCSuccess(t *testing.T) {
-	nodeFollower := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	rpcServer := rpc.NewServer()
+	nodeFollower := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeFollower.term = 1
 
-	leaderNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	leaderNode := NewRaftNode("Server2", ":5002", rpcServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	leaderNode.term = 1
 	leaderNode.state = Leader
 	leaderNode.snapshot = &Snapshot{
@@ -315,10 +318,11 @@ func TestInstallSnapshotRPCSuccess(t *testing.T) {
 }
 
 func TestInstallSnapshotRPCStaleTerm(t *testing.T) {
-	nodeFollower := NewRaftNode("Server1", ":5001", map[ServerID]Port{"Server2": ":5002"}, false)
+	rpcServer := rpc.NewServer()
+	nodeFollower := NewRaftNode("Server1", ":5001", rpcServer, map[ServerID]Address{"Server2": ":5002"}, false)
 	nodeFollower.term = 1
 
-	leaderNode := NewRaftNode("Server2", ":5002", map[ServerID]Port{"Server1": ":5001"}, false)
+	leaderNode := NewRaftNode("Server2", ":5002", rpcServer, map[ServerID]Address{"Server1": ":5001"}, false)
 	leaderNode.term = 0
 	leaderNode.state = Leader
 	leaderNode.snapshot = &Snapshot{

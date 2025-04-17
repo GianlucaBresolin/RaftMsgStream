@@ -8,8 +8,8 @@ import (
 )
 
 func TestStartElection(t *testing.T) {
-	server := rpc.NewServer()
-	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, server, false)
+	rpcServer := rpc.NewServer()
+	raftNode := NewRaftNode("id", ":1233", rpcServer, map[ServerID]Address{"2": "1234", "3": "1235"}, false)
 	raftNode.term = 1
 
 	raftNode.startElection()
@@ -24,7 +24,8 @@ func TestStartElection(t *testing.T) {
 }
 
 func TestWinElection(t *testing.T) {
-	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1234", "3": "1235"}, false)
+	rpcServer := rpc.NewServer()
+	raftNode := NewRaftNode("id", ":1233", rpcServer, map[ServerID]Address{"2": "1234", "3": "1235"}, false)
 	raftNode.term = 1
 	raftNode.state = Candidate
 	raftNode.log.entries = []LogEntry{
@@ -59,7 +60,8 @@ func TestWinElection(t *testing.T) {
 }
 
 func TestRevertToFollower(t *testing.T) {
-	raftNode := NewRaftNode("id", ":1233", map[ServerID]Port{"2": "1236", "3": "1235"}, false)
+	rpcServer := rpc.NewServer()
+	raftNode := NewRaftNode("id", ":1233", rpcServer, map[ServerID]Address{"2": "1236", "3": "1235"}, false)
 	raftNode.state = Leader
 	raftNode.currentLeader = "id"
 	raftNode.myVote = "id"
@@ -255,7 +257,7 @@ func TestHandleVotesSuccess(t *testing.T) {
 		electionVotesNewC: 0,
 		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
 		electionTimer:     time.NewTimer(time.Second),
-		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Address{"1": "1233", "2": "1234", "3": "1235"}},
 		snapshot: &Snapshot{
 			LastIndex:        0,
 			LastTerm:         0,
@@ -304,7 +306,7 @@ func TestHandleVotesFailure(t *testing.T) {
 		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
 		electionTimer:     time.NewTimer(time.Second),
 		minimumTimer:      time.NewTimer(time.Second),
-		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"1": "1233", "2": "1234", "3": "1235"}},
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Address{"1": "1233", "2": "1234", "3": "1235"}},
 	}
 
 	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}
@@ -333,7 +335,7 @@ func TestHandleVotesWithNewTerm(t *testing.T) {
 		voteResponseCh:    make(chan RequestVoteResultWithServerID, 3),
 		electionTimer:     time.NewTimer(time.Second),
 		minimumTimer:      time.NewTimer(time.Second),
-		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Port{"2": "1234", "3": "1235"}},
+		peers:             Configuration{OldConfig: nil, NewConfig: map[ServerID]Address{"2": "1234", "3": "1235"}},
 	}
 
 	raftNode.voteResponseCh <- RequestVoteResultWithServerID{"1", RequestVoteResult{1, true}}

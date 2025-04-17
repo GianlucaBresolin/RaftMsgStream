@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  server1:
+    image: localraftmsgserver
+    container_name: server1
+    ports:
+      - "8081:8080"
+      - "5001:5001"
+    command: ["node1", "server1", "5001", "false", 
+              "node2", "server2", "5002",
+              "node3", "server3", "5003"]
+    
+  server2:
+    image: localraftmsgserver
+    container_name: server2
+    ports:
+      - "8082:8080"
+      - "5002:5002"
+    command: ["node2", "server2", "5002", "false", 
+              "node1", "server1", "5001",
+              "node3", "server3", "5003"]
+
+  server3:
+    image: localraftmsgserver
+    container_name: server3
+    ports:
+      - "8083:8080"
+      - "5003:5003" 
+    command: ["node3", "server3", "5003", "false", 
+              "node1", "server1", "5001",
+              "node2", "server2", "5002"]

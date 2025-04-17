@@ -1,13 +1,15 @@
 package raft
 
 import (
+	"net/rpc"
 	"testing"
 	"time"
 )
 
 func TestHandleReplicationLog(t *testing.T) {
-	rn := NewRaftNode("node1", ":5001", map[ServerID]Port{"follower": ":5002"}, false)
-	follower := NewRaftNode("follower", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
+	rpcServer := rpc.NewServer()
+	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower": ":5002"}, false)
+	follower := NewRaftNode("follower", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
 
 	rn.PrepareConnections()
 	follower.PrepareConnections()
@@ -63,16 +65,17 @@ func TestHandleReplicationLog(t *testing.T) {
 }
 
 func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
-	rn := NewRaftNode("node1", ":5001", map[ServerID]Port{"follower1": ":5002", "follower2": ":5003"}, false)
-	follower1 := NewRaftNode("follower1", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
-	follower2 := NewRaftNode("follower2", ":5003", map[ServerID]Port{"node1": ":5001"}, false)
+	rpcServer := rpc.NewServer()
+	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower1": ":5002", "follower2": ":5003"}, false)
+	follower1 := NewRaftNode("follower1", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
+	follower2 := NewRaftNode("follower2", ":5003", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
 
 	rn.PrepareConnections()
 	follower1.PrepareConnections()
 	follower2.PrepareConnections()
 	time.Sleep(200 * time.Millisecond) // wait for connections to be established
 
-	rn.peers.OldConfig = make(map[ServerID]Port)
+	rn.peers.OldConfig = make(map[ServerID]Address)
 	rn.peers.OldConfig["follower2"] = ":5003"
 	rn.peers.OldConfig["node1"] = ":5001"
 
@@ -136,8 +139,9 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 }
 
 func TestHandleReplicationLogRevertToFollower(t *testing.T) {
-	rn := NewRaftNode("node1", ":5001", map[ServerID]Port{"follower": ":5002"}, false)
-	follower := NewRaftNode("follower", ":5002", map[ServerID]Port{"node1": ":5001"}, false)
+	rpcServer := rpc.NewServer()
+	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower": ":5002"}, false)
+	follower := NewRaftNode("follower", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
 
 	rn.PrepareConnections()
 	follower.PrepareConnections()

@@ -12,8 +12,6 @@ func (rn *RaftNode) startElection() {
 	rn.electionVotesNewC = 0
 	rn.electionVotesOldC = 0
 	rn.term++
-	rn.myVote = rn.id
-	rn.voteResponseCh <- RequestVoteResultWithServerID{rn.id, RequestVoteResult{rn.term, true}}
 	rn.voteRequestCh <- RequestVoteArguments{rn.term, rn.id, rn.lastGlobalIndex(), rn.log.lastTerm()}
 	log.Println("Starting election for term", rn.term)
 }
@@ -167,10 +165,6 @@ func (rn *RaftNode) askForVotes() {
 		case requestVoteArguments := <-rn.voteRequestCh:
 			// we need to ask for votes
 			for peer, peerConnection := range rn.peersConnection {
-				//log.Println("Asking for votes", rn.id, "for term", rn.term)
-				if peer == rn.id {
-					continue
-				}
 				go func() {
 					voteResponse := &RequestVoteResult{}
 					stopAskingVote := false
@@ -189,7 +183,7 @@ func (rn *RaftNode) askForVotes() {
 						select {
 						case call := <-done:
 							if call.Error != nil {
-								log.Println("Error sending RequestVoteRPC to", rn.id, ":", call.Error)
+								log.Println("Error sending RequestVoteRPC to", peer, ":", call.Error)
 							} else {
 								voteResponseWithServerID := RequestVoteResultWithServerID{serverID: peer, result: *voteResponse}
 								rn.voteResponseCh <- voteResponseWithServerID
@@ -197,7 +191,7 @@ func (rn *RaftNode) askForVotes() {
 							}
 
 							rn.mutex.Lock()
-							if (rn.term > requestVoteArguments.Term || rn.currentLeader != "") && rn.state == Candidate {
+							if rn.term > requestVoteArguments.Term || rn.currentLeader != "" {
 								// stale term or we becomes leader -> stop asking to that node for a vote
 								stopAskingVote = true
 							}

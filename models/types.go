@@ -1,5 +1,10 @@
 package models
 
+type Address struct {
+	Address  string
+	RaftPort string
+}
+
 type Message struct {
 	Username string
 	Msg      string

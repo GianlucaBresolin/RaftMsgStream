@@ -195,7 +195,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 			return
 		case <-autorizedReadCh:
 			// we got the majority of the cluster to respond, proceed with the read
-			log.Println("Node", rn.id, "got the majority of the cluster to respond")
+			// log.Println("Node", rn.id, "got the majority of the cluster to respond")
 		}
 		rn.mutex.Lock()
 	}

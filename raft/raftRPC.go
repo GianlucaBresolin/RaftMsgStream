@@ -25,6 +25,14 @@ func (rn *RaftNode) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteRes
 		return errors.New("node is still not available")
 	}
 
+	if rn.id == req.CandidateId && rn.term == req.Term {
+		// grants to vote to itself
+		rn.myVote = req.CandidateId
+		res.VoteGranted = true
+		log.Println("Node", rn.id, "grants vote to itself for term", req.Term)
+		return nil
+	}
+
 	if rn.unvotingServer {
 		// discard vote request to avoid disruption from unvoting servers
 		res.Term = req.Term
@@ -61,8 +69,10 @@ func (rn *RaftNode) RequestVoteRPC(req RequestVoteArguments, res *RequestVoteRes
 	if (rn.log.lastTerm() <= req.LastLogTerm) && (rn.lastGlobalIndex() <= req.LastLogIndex) && rn.myVote == "" {
 		rn.myVote = req.CandidateId
 		res.VoteGranted = true
+		log.Println("Node", rn.id, "grants vote to node", req.CandidateId, "for term", req.Term)
 	} else {
 		res.VoteGranted = false
+		log.Println("Node", rn.id, "rejects vote to node", req.CandidateId, "for term", req.Term)
 	}
 
 	res.Term = rn.term

@@ -4,18 +4,17 @@ import (
 	"errors"
 	"log"
 	"net/rpc"
-	"os"
 )
 
 func (rn *RaftNode) PrepareConnections() error {
 	e := error(nil)
 	for peer, address := range rn.peers.NewConfig {
-		if rn.peersConnection[peer] != nil || peer == rn.id {
+		if rn.peersConnection[peer] != nil {
 			// skip if the peer is already connected
 			continue
 		}
 
-		client, err := rpc.DialHTTP("tcp", string(address)+":"+os.Getenv("RAFT_PORT"))
+		client, err := rpc.DialHTTP("tcp", string(address))
 		if err != nil {
 			log.Printf("Failed to dial %s: %v", peer, err)
 			e = errors.New("failed to dial")
