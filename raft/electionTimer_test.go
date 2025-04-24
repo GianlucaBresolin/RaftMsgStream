@@ -1,53 +1,52 @@
 package raft
 
 import (
-	"sync"
+	"net/rpc"
 	"testing"
 	"time"
 )
 
 func TestRestetTimerWithDrain(t *testing.T) {
-	rn := RaftNode{
+	node := RaftNode{
 		electionTimer: time.NewTimer(time.Microsecond * 2),
 		minimumTimer:  time.NewTimer(time.Microsecond),
 	}
 
-	time.Sleep(time.Microsecond * 2) // wait for timer to expire
-	rn.resetTimer()
+	time.Sleep(time.Microsecond * 3) // wait for timer to expire
+	node.resetTimer()
 
-	if rn.electionTimer == nil {
+	if node.electionTimer == nil {
 		t.Error("electionTimer should not be nil")
 	}
 }
 
 func TestRestetTimerWithoutDrain(t *testing.T) {
-	rn := RaftNode{
+	node := RaftNode{
 		electionTimer: time.NewTimer(time.Microsecond * 2),
 		minimumTimer:  time.NewTimer(time.Microsecond),
 	}
 
-	rn.resetTimer()
+	node.resetTimer()
 
-	if rn.electionTimer == nil {
+	if node.electionTimer == nil {
 		t.Error("electionTimer should not be nil")
 	}
 }
 
 func TestHandleTimer(t *testing.T) {
-	rn := RaftNode{
-		electionTimer: time.NewTimer(time.Microsecond * 2),
-		minimumTimer:  time.NewTimer(time.Microsecond),
-		mutex:         sync.Mutex{},
-	}
+	rpcServer := rpc.NewServer()
+	node := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{}, false)
 
-	go rn.handleTimer()
+	node.startTimer()
+	go node.handleTimer()
 
-	if rn.electionTimer == nil {
+	time.Sleep(time.Second * 2) // wait for election to start
+
+	if node.electionTimer == nil {
 		t.Error("electionTimer should not be nil")
 	}
 
-	time.Sleep(time.Second * 2) // wait for election to start
-	if rn.state != Candidate {
-		t.Error("state should be candidate, got", rn.state)
+	if node.state != Candidate {
+		t.Error("state should be candidate, got", node.state)
 	}
 }
