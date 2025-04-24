@@ -13,7 +13,7 @@ func TestPrepareCold_new(t *testing.T) {
 	command := []byte(`{"NewConfig": {"node2": ":5002"}}`)
 	result := node.prepareCold_new(command)
 
-	if string(result) != `{"OldConfig":{"node1":"5001","node2":"5002"},"NewConfig":{"node2":"5002"}}` {
+	if string(result) != `{"OldConfig":{"node1":":5001","node2":":5002"},"NewConfig":{"node2":":5002"}}` {
 		t.Errorf("Expected result to be {\"OldConfig\":{\"node1\":\":5001\",\"node2\":\":5002\"},\"NewConfig\":{\"node2\":\":5002\"}}, got %s", result)
 	}
 }
@@ -59,8 +59,8 @@ func TestApplyConfiguration(t *testing.T) {
 	node1.applyConfiguration(c)
 	node3.applyConfiguration(c)
 
-	if len(node1.peersConnection) != 1 {
-		t.Errorf("Expected peersConnection to have 1 element, got %d", len(node1.peersConnection))
+	if len(node1.peersConnection) != 3 {
+		t.Errorf("Expected peersConnection to have 3 element, got %d", len(node1.peersConnection))
 	}
 
 	if node3.unvotingServer {

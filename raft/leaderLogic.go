@@ -89,9 +89,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 			select {
 			case call := <-done:
 				if call.Error != nil {
-					log.Println("Error sending AppendEntriesRPC to", node, ":", call.Error)
-					log.Println("Retrying...")
-					time.Sleep(time.Second)
+					log.Println("Error sending AppendEntriesRPC to", node, ":", call.Error, "retrying...")
 					continue
 				}
 				failedReplicationRequest = true
