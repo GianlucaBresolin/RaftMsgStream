@@ -76,6 +76,7 @@ func (rn *RaftNode) handleReplicationLog(node ServerID, peerConnection *rpc.Clie
 
 		failedReplicationRequest := false
 		res := &AppendEntriesResult{}
+
 		for !failedReplicationRequest {
 			done := make(chan *rpc.Call, 1)
 			timeout := time.NewTimer(20 * time.Millisecond)

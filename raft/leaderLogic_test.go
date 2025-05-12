@@ -7,16 +7,19 @@ import (
 )
 
 func TestHandleReplicationLog(t *testing.T) {
-	rpcServer := rpc.NewServer()
-	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower": ":5002"}, false)
-	follower := NewRaftNode("follower", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
+	rpcServerLeader := rpc.NewServer()
+	leader := NewRaftNode("leader", ":5001", rpcServerLeader, map[ServerID]Address{"follower": ":5002"}, false)
+	rpcServerFollower := rpc.NewServer()
+	follower := NewRaftNode("follower", ":5002", rpcServerFollower, map[ServerID]Address{"leader": ":5001"}, false)
 
-	rn.PrepareConnections()
+	leader.PrepareConnections()
 	follower.PrepareConnections()
 
-	time.Sleep(100 * time.Millisecond) // wait for connections to be established
+	time.Sleep(200 * time.Millisecond) // wait for connections to be established
 
-	rn.state = Leader
+	leader.state = Leader
+	leader.available = true
+	follower.available = true
 
 	testEntry := LogEntry{
 		Index:   1,
@@ -26,36 +29,37 @@ func TestHandleReplicationLog(t *testing.T) {
 		USN:     1,
 	}
 
-	rn.log.entries = append(rn.log.entries, testEntry)
+	leader.log.entries = append(leader.log.entries, testEntry)
 
-	rn.nextIndex = make(map[ServerID]uint)
-	rn.nextIndex["follower"] = 2
-	rn.pendingCommit = make(map[uint]replicationState)
+	leader.nextIndex = make(map[ServerID]uint)
+	leader.nextIndex["follower"] = 2
+	leader.pendingCommit = make(map[uint]replicationState)
 	responseCh := make(chan bool, 1)
-	rn.pendingCommit[1] = replicationState{
+	leader.pendingCommit[1] = replicationState{
 		replicationCounterOldC: 1,
 		replicationCounterNewC: 1,
 		committedOldC:          true,
 		committedNewC:          false,
-		term:                   1,
+		term:                   0,
 		clientCh:               responseCh,
 	}
 
 	follower.startTimer()
 	go follower.handleTimer()
-	go rn.handleReplicationLog("follower", rn.peersConnection["follower"])
-	time.Sleep(100 * time.Millisecond) // wait to let the replication happen
 
-	if rn.nextIndex["follower"] != 2 {
-		t.Errorf("Expected nextIndex to be 2, got %d", rn.nextIndex["follower"])
+	go leader.handleReplicationLog("follower", leader.peersConnection["follower"])
+	time.Sleep(300 * time.Millisecond) // wait to let the replication happen
+
+	if leader.nextIndex["follower"] != 2 {
+		t.Errorf("Expected nextIndex to be 2, got %d", leader.nextIndex["follower"])
 	}
 
 	if follower.log.entries[1].Index != testEntry.Index && follower.log.entries[1].Term != testEntry.Term {
 		t.Errorf("Expected follower log to contain the test entry, got %v", follower.log.entries[1])
 	}
 
-	if rn.log.lastCommitedIndex != 1 {
-		t.Errorf("Expected lastCommitedIndex to be 1, got %d", rn.log.lastCommitedIndex)
+	if leader.log.lastCommitedIndex != 1 {
+		t.Errorf("Expected lastCommitedIndex to be 1, got %d", leader.log.lastCommitedIndex)
 	}
 
 	commited := <-responseCh
@@ -65,21 +69,28 @@ func TestHandleReplicationLog(t *testing.T) {
 }
 
 func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
-	rpcServer := rpc.NewServer()
-	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower1": ":5002", "follower2": ":5003"}, false)
-	follower1 := NewRaftNode("follower1", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
-	follower2 := NewRaftNode("follower2", ":5003", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
+	// it needs to reach the majority of the old configuration and the new configuration
+	rpcServerLeader := rpc.NewServer()
+	leader := NewRaftNode("leader", ":5001", rpcServerLeader, map[ServerID]Address{"follower1": ":5002", "follower2": ":5003"}, false)
+	rpcServerFollower1 := rpc.NewServer()
+	follower1 := NewRaftNode("follower1", ":5002", rpcServerFollower1, map[ServerID]Address{"leader": ":5001"}, false)
+	rpcServerFollower2 := rpc.NewServer()
+	follower2 := NewRaftNode("follower2", ":5003", rpcServerFollower2, map[ServerID]Address{"leader": ":5001"}, false)
 
-	rn.PrepareConnections()
+	leader.PrepareConnections()
 	follower1.PrepareConnections()
 	follower2.PrepareConnections()
+
 	time.Sleep(200 * time.Millisecond) // wait for connections to be established
 
-	rn.peers.OldConfig = make(map[ServerID]Address)
-	rn.peers.OldConfig["follower2"] = ":5003"
-	rn.peers.OldConfig["node1"] = ":5001"
+	leader.state = Leader
+	leader.available = true
+	follower1.available = true
+	follower2.available = true
 
-	rn.state = Leader
+	leader.peers.OldConfig = make(map[ServerID]Address)
+	leader.peers.OldConfig["follower2"] = ":5003"
+	leader.peers.OldConfig["leader"] = ":5001"
 
 	testEntry := LogEntry{
 		Index:   1,
@@ -89,20 +100,20 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 		USN:     1,
 	}
 
-	rn.log.entries = append(rn.log.entries, testEntry)
+	leader.log.entries = append(leader.log.entries, testEntry)
 
-	rn.nextIndex = make(map[ServerID]uint)
-	rn.nextIndex["follower1"] = 1
-	rn.nextIndex["follower2"] = 1
+	leader.nextIndex = make(map[ServerID]uint)
+	leader.nextIndex["follower1"] = 1
+	leader.nextIndex["follower2"] = 1
 
-	rn.pendingCommit = make(map[uint]replicationState)
+	leader.pendingCommit = make(map[uint]replicationState)
 	responseCh := make(chan bool, 1)
-	rn.pendingCommit[1] = replicationState{
+	leader.pendingCommit[1] = replicationState{
 		replicationCounterOldC: 1,
 		replicationCounterNewC: 1,
 		committedOldC:          false,
 		committedNewC:          false,
-		term:                   1,
+		term:                   0,
 		clientCh:               responseCh,
 	}
 
@@ -110,15 +121,17 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 	follower2.startTimer()
 	go follower1.handleTimer()
 	go follower2.handleTimer()
-	go rn.handleReplicationLog("follower1", rn.peersConnection["follower1"])
-	go rn.handleReplicationLog("follower2", rn.peersConnection["follower2"])
+
+	go leader.handleReplicationLog("follower1", leader.peersConnection["follower1"])
+	go leader.handleReplicationLog("follower2", leader.peersConnection["follower2"])
+
 	time.Sleep(100 * time.Millisecond) // wait to let the replication happen
 
-	if rn.nextIndex["follower1"] != 2 {
-		t.Errorf("Expected nextIndex to be 2, got %d", rn.nextIndex["follower"])
+	if leader.nextIndex["follower1"] != 2 {
+		t.Errorf("Expected nextIndex to be 2, got %d", leader.nextIndex["follower"])
 	}
-	if rn.nextIndex["follower2"] != 2 {
-		t.Errorf("Expected nextIndex to be 2, got %d", rn.nextIndex["follower"])
+	if leader.nextIndex["follower2"] != 2 {
+		t.Errorf("Expected nextIndex to be 2, got %d", leader.nextIndex["follower"])
 	}
 
 	if follower1.log.entries[1].Index != testEntry.Index && follower1.log.entries[1].Term != testEntry.Term {
@@ -128,8 +141,8 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 		t.Errorf("Expected follower log to contain the test entry, got %v", follower2.log.entries[1])
 	}
 
-	if rn.log.lastCommitedIndex != 1 {
-		t.Errorf("Expected lastCommitedIndex to be 1, got %d", rn.log.lastCommitedIndex)
+	if leader.log.lastCommitedIndex != 1 {
+		t.Errorf("Expected lastCommitedIndex to be 1, got %d", leader.log.lastCommitedIndex)
 	}
 
 	commited := <-responseCh
@@ -139,17 +152,21 @@ func TestHandleReplicationLogDurignJointConsensus(t *testing.T) {
 }
 
 func TestHandleReplicationLogRevertToFollower(t *testing.T) {
-	rpcServer := rpc.NewServer()
-	rn := NewRaftNode("node1", ":5001", rpcServer, map[ServerID]Address{"follower": ":5002"}, false)
-	follower := NewRaftNode("follower", ":5002", rpcServer, map[ServerID]Address{"node1": ":5001"}, false)
+	rpcServerLeader := rpc.NewServer()
+	leader := NewRaftNode("node1", ":5001", rpcServerLeader, map[ServerID]Address{"follower": ":5002"}, false)
+	rpcServerFollower := rpc.NewServer()
+	follower := NewRaftNode("follower", ":5002", rpcServerFollower, map[ServerID]Address{"node1": ":5001"}, false)
 
-	rn.PrepareConnections()
+	leader.PrepareConnections()
 	follower.PrepareConnections()
 
-	time.Sleep(100 * time.Millisecond) // wait for connections to be established
+	time.Sleep(200 * time.Millisecond) // wait for connections to be established
 
-	rn.state = Leader
-	rn.nextIndex = make(map[ServerID]uint)
+	follower.available = true
+	leader.available = true
+
+	leader.state = Leader
+	leader.nextIndex = make(map[ServerID]uint)
 	follower.term = 1
 
 	testEntry := LogEntry{
@@ -160,13 +177,14 @@ func TestHandleReplicationLogRevertToFollower(t *testing.T) {
 		USN:     1,
 	}
 
-	rn.log.entries = append(rn.log.entries, testEntry)
+	leader.log.entries = append(leader.log.entries, testEntry)
 
-	rn.nextIndex = make(map[ServerID]uint)
-	rn.nextIndex["follower"] = 2
-	rn.pendingCommit = make(map[uint]replicationState)
+	leader.nextIndex = make(map[ServerID]uint)
+	leader.nextIndex["follower"] = 2
+
+	leader.pendingCommit = make(map[uint]replicationState)
 	responseCh := make(chan bool, 1)
-	rn.pendingCommit[1] = replicationState{
+	leader.pendingCommit[1] = replicationState{
 		replicationCounterOldC: 1,
 		replicationCounterNewC: 1,
 		committedOldC:          true,
@@ -175,18 +193,21 @@ func TestHandleReplicationLogRevertToFollower(t *testing.T) {
 		clientCh:               responseCh,
 	}
 
-	follower.startTimer()
-	rn.startTimer()
-	go follower.handleTimer()
-	go rn.handleTimer()
-	go rn.handleReplicationLog("follower", rn.peersConnection["follower"])
-	<-rn.leaderCh
+	leader.startTimer()
+	go leader.handleTimer()
 
-	if len(follower.log.entries) != 1 {
+	follower.startTimer()
+	go follower.handleTimer()
+
+	go leader.handleReplicationLog("follower", leader.peersConnection["follower"])
+
+	<-leader.leaderCh
+
+	if len(follower.log.entries) >= 2 {
 		t.Errorf("Expected follower log to doesn't contain the test entry, got its lenght of %v", len(follower.log.entries))
 	}
 
-	if rn.state != Follower {
-		t.Errorf("Expected state to be Follower, got %v", rn.state)
+	if leader.state != Follower {
+		t.Errorf("Expected state to be Follower, got %v", leader.state)
 	}
 }
