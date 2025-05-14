@@ -95,19 +95,16 @@ func (s *Server) Run() {
 			Id:      request.User,
 			USN:     request.USN,
 		}
-		var clientRequestResult models.ClientActionResult
 
-		if err := s.actionRequest(clientRequest, &clientRequestResult); err == nil {
-			if clientRequestResult.Success {
-				c.JSON(http.StatusOK, gin.H{"status": "message sent"})
-			} else {
-				c.JSON(http.StatusOK, gin.H{
-					"status": "reditecting to leader",
-					"leader": clientRequestResult.Leader,
-				})
-			}
+		clientRequestResult := s.actionRequest(clientRequest)
+
+		if clientRequestResult.Success {
+			c.JSON(http.StatusOK, gin.H{"status": "message sent"})
 		} else {
-			c.JSON(http.StatusOK, gin.H{"status": "failed to send message"})
+			c.JSON(http.StatusOK, gin.H{
+				"status": "reditecting to leader",
+				"leader": clientRequestResult.Leader,
+			})
 		}
 	})
 
@@ -135,19 +132,15 @@ func (s *Server) Run() {
 			Id:      request.User,
 			USN:     request.USN,
 		}
-		var clientRequestResult models.ClientActionResult
 
-		if err := s.actionRequest(clientRequest, &clientRequestResult); err != nil {
-			if clientRequestResult.Success {
-				c.JSON(http.StatusOK, gin.H{"status": "left group"})
-			} else {
-				c.JSON(http.StatusOK, gin.H{
-					"status": "reditecting to leader",
-					"leader": clientRequestResult.Leader,
-				})
-			}
+		clientRequestResult := s.actionRequest(clientRequest)
+		if clientRequestResult.Success {
+			c.JSON(http.StatusOK, gin.H{"status": "left group"})
 		} else {
-			c.JSON(http.StatusOK, gin.H{"status": "failed to leave group"})
+			c.JSON(http.StatusOK, gin.H{
+				"status": "reditecting to leader",
+				"leader": clientRequestResult.Leader,
+			})
 		}
 	})
 
@@ -255,28 +248,25 @@ func (s *Server) Run() {
 			Id:      request.User,
 			USN:     request.USN,
 		}
-		var clientRequestResult models.ClientGetStateResult
 
-		if err := s.getState(clientRequestArguments, &clientRequestResult); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update state"})
+		clientRequestResult := s.getState(clientRequestArguments)
+
+		if clientRequestResult.Success {
+			getStateResult := &models.GetStateResult{}
+			json.Unmarshal(clientRequestResult.Data, getStateResult)
+
+			c.JSON(http.StatusOK, gin.H{
+				"status": "state updated",
+				"state":  getStateResult,
+			})
 		} else {
-			if clientRequestResult.Success {
-				getStateResult := &models.GetStateResult{}
-				json.Unmarshal(clientRequestResult.Data, getStateResult)
-
+			if clientRequestResult.Leader != "" {
 				c.JSON(http.StatusOK, gin.H{
-					"status": "state updated",
-					"state":  getStateResult,
+					"status": "reditecting to leader",
+					"leader": clientRequestResult.Leader,
 				})
 			} else {
-				if clientRequestResult.Leader != "" {
-					c.JSON(http.StatusOK, gin.H{
-						"status": "reditecting to leader",
-						"leader": clientRequestResult.Leader,
-					})
-				} else {
-					c.JSON(http.StatusOK, gin.H{"status": "failed to update state"})
-				}
+				c.JSON(http.StatusOK, gin.H{"status": "failed to update state"})
 			}
 		}
 	})

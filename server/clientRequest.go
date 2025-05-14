@@ -4,12 +4,10 @@ import (
 	"RaftMsgStream/models"
 )
 
-func (s *Server) actionRequest(req models.ClientActionArguments, res *models.ClientActionResult) error {
-	s.raftNode.ActionRequest(req, res)
-	return nil
+func (s *Server) actionRequest(req models.ClientActionArguments) models.ClientActionResult {
+	return s.raftNode.ActionRequest(req)
 }
 
-func (s *Server) getState(req models.ClientGetStateArguments, res *models.ClientGetStateResult) error {
-	s.raftNode.GetState(req, res)
-	return nil
+func (s *Server) getState(req models.ClientGetStateArguments) models.ClientGetStateResult {
+	return s.raftNode.GetState(req)
 }

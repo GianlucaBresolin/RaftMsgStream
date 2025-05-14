@@ -16,7 +16,10 @@ type replicationState struct {
 	clientCh               chan bool
 }
 
-func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.ClientActionResult) {
+func (rn *RaftNode) ActionRequest(req models.ClientActionArguments) models.ClientActionResult {
+	// response to the client
+	var res models.ClientActionResult
+
 	rn.mutex.Lock()
 
 	if rn.state == Leader {
@@ -33,7 +36,7 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 				res.Success = true
 				res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 				rn.mutex.Unlock()
-				return
+				return res
 			}
 		}
 
@@ -46,7 +49,7 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 					res.Success = false
 					res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 					rn.mutex.Unlock()
-					return
+					return res
 				}
 				// prepare Cold,new
 				command = rn.prepareCold_new(req.Command)
@@ -92,13 +95,13 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 
 			res.Success = committed
 			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
-			return
+			return res
 		} else {
 			// we already have the request in the log, discard it
 			res.Success = true
 			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
-			return
+			return res
 		}
 	}
 
@@ -106,9 +109,13 @@ func (rn *RaftNode) ActionRequest(req models.ClientActionArguments, res *models.
 	res.Success = false
 	res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 	rn.mutex.Unlock()
+	return res
 }
 
-func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.ClientGetStateResult) {
+func (rn *RaftNode) GetState(req models.ClientGetStateArguments) models.ClientGetStateResult {
+	// response to the client
+	var res models.ClientGetStateResult
+
 	rn.mutex.Lock()
 	// check if the request is stale
 	_, okC := rn.lastUSNof[req.Id]
@@ -119,7 +126,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 		res.Success = false
 		res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 		rn.mutex.Unlock()
-		return
+		return res
 	}
 
 	// provide the read-only operation sacrificing linearizability if unvoting server, otherwise
@@ -130,7 +137,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 			res.Success = false
 			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
-			return
+			return res
 		}
 
 		// check if we have the NOOP entry committed to provide that, as a leader, we have the latest information
@@ -139,7 +146,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 			res.Success = false
 			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			rn.mutex.Unlock()
-			return
+			return res
 		}
 
 		// exchange heartbeats with the majority of the cluster to check if we were deposed or not
@@ -192,7 +199,7 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 			res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
 			log.Println("Node", rn.id, "did not get the majority of the cluster to respond or the timeout expired")
 			rn.mutex.Unlock()
-			return
+			return res
 		case <-autorizedReadCh:
 			// we got the majority of the cluster to respond, proceed with the read
 			// log.Println("Node", rn.id, "got the majority of the cluster to respond")
@@ -210,4 +217,5 @@ func (rn *RaftNode) GetState(req models.ClientGetStateArguments, res *models.Cli
 	res.Success = true
 	res.Data = resultData
 	res.Leader = string(rn.peers.NewConfig[rn.currentLeader])
+	return res
 }
